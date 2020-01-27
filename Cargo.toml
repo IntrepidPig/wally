@@ -1,0 +1,42 @@
+[package]
+name = "wally"
+version = "0.1.0"
+authors = ["IntrepidPig <bennycaguilera@gmail.com>"]
+edition = "2018"
+
+[build-dependencies]
+bindgen = "0.52.0"
+
+[dependencies]
+winit = "0.20.0"
+# use_system_lib is not compatible with winit
+#wayland-server = { version = "0.24.1", features = ["use_system_lib"] }
+wayland-server = { version = "0.24.1" }
+wayland-protocols = { version = "0.24.1", features = ["server", "unstable_protocols"] }
+#wayland-protocols = { version = "0.24.1", features = ["server"] }
+calloop = "0.4.4"
+log = "0.4.8"
+fern = "0.5.9"
+thiserror = "1.0.9"
+memmap = "0.7.0"
+crossbeam = "0.7.3"
+input = "0.4.1"
+libc = "0.2.66"
+nix = "0.16.1"
+dbus = "0.8.1"
+udev = "0.2.0"
+mio = "0.6.21"
+minifb = "0.15.1"
+ash = "0.29.0"
+drm = "0.3.4"
+gbm = { version = "0.5.0", default-features = false, features = ["drm-support"] }
+shared_library = "0.1.9"
+shaderc = "0.6.1"
+raw-window-handle = "0.3.3"
+backtrace = "0.3.42"
+
+[patch.crates-io]
+#drm = { path = "/home/intrepidpig/.cargo/registry/src/github.com-1ecc6299db9ec823/drm-0.3.4" }
+dbus = { path = "/home/intrepidpig/dev/wally/extern/dbus-rs/dbus" }
+gbm = { path = "/home/intrepidpig/dev/gbm.rs" }
+ash = { path = "/home/intrepidpig/dev/ash/ash" }
