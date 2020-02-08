@@ -131,30 +131,25 @@ pub type __pid_t = ::std::os::raw::c_int;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct __fsid_t {
-    pub __val: [::std::os::raw::c_int; 2usize],
+	pub __val: [::std::os::raw::c_int; 2usize],
 }
 #[test]
 fn bindgen_test_layout___fsid_t() {
-    assert_eq!(
-        ::std::mem::size_of::<__fsid_t>(),
-        8usize,
-        concat!("Size of: ", stringify!(__fsid_t))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<__fsid_t>(),
-        4usize,
-        concat!("Alignment of ", stringify!(__fsid_t))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<__fsid_t>())).__val as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(__fsid_t),
-            "::",
-            stringify!(__val)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<__fsid_t>(),
+		8usize,
+		concat!("Size of: ", stringify!(__fsid_t))
+	);
+	assert_eq!(
+		::std::mem::align_of::<__fsid_t>(),
+		4usize,
+		concat!("Alignment of ", stringify!(__fsid_t))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<__fsid_t>())).__val as *const _ as usize },
+		0usize,
+		concat!("Offset of field: ", stringify!(__fsid_t), "::", stringify!(__val))
+	);
 }
 pub type __clock_t = ::std::os::raw::c_long;
 pub type __rlim_t = ::std::os::raw::c_ulong;
@@ -204,12 +199,12 @@ pub type uintmax_t = __uintmax_t;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct drm_amdgpu_info_hw_ip {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct drm_amdgpu_bo_list_entry {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 pub const amdgpu_bo_handle_type_amdgpu_bo_handle_type_gem_flink_name: amdgpu_bo_handle_type = 0;
 pub const amdgpu_bo_handle_type_amdgpu_bo_handle_type_kms: amdgpu_bo_handle_type = 1;
@@ -223,1711 +218,1607 @@ pub type amdgpu_sw_info = u32;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_device {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 pub type amdgpu_device_handle = *mut amdgpu_device;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_context {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 pub type amdgpu_context_handle = *mut amdgpu_context;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_bo {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 pub type amdgpu_bo_handle = *mut amdgpu_bo;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_bo_list {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 pub type amdgpu_bo_list_handle = *mut amdgpu_bo_list;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_va {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 pub type amdgpu_va_handle = *mut amdgpu_va;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_semaphore {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 pub type amdgpu_semaphore_handle = *mut amdgpu_semaphore;
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_bo_alloc_request {
-    pub alloc_size: u64,
-    pub phys_alignment: u64,
-    pub preferred_heap: u32,
-    pub flags: u64,
+	pub alloc_size: u64,
+	pub phys_alignment: u64,
+	pub preferred_heap: u32,
+	pub flags: u64,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_bo_alloc_request() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_bo_alloc_request>(),
-        32usize,
-        concat!("Size of: ", stringify!(amdgpu_bo_alloc_request))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_bo_alloc_request>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_bo_alloc_request))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).alloc_size as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_alloc_request),
-            "::",
-            stringify!(alloc_size)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).phys_alignment as *const _ as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_alloc_request),
-            "::",
-            stringify!(phys_alignment)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).preferred_heap as *const _ as usize
-        },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_alloc_request),
-            "::",
-            stringify!(preferred_heap)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).flags as *const _ as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_alloc_request),
-            "::",
-            stringify!(flags)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_bo_alloc_request>(),
+		32usize,
+		concat!("Size of: ", stringify!(amdgpu_bo_alloc_request))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_bo_alloc_request>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_bo_alloc_request))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).alloc_size as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_alloc_request),
+			"::",
+			stringify!(alloc_size)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).phys_alignment as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_alloc_request),
+			"::",
+			stringify!(phys_alignment)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).preferred_heap as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_alloc_request),
+			"::",
+			stringify!(preferred_heap)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_alloc_request>())).flags as *const _ as usize },
+		24usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_alloc_request),
+			"::",
+			stringify!(flags)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct amdgpu_bo_metadata {
-    pub flags: u64,
-    pub tiling_info: u64,
-    pub size_metadata: u32,
-    pub umd_metadata: [u32; 64usize],
+	pub flags: u64,
+	pub tiling_info: u64,
+	pub size_metadata: u32,
+	pub umd_metadata: [u32; 64usize],
 }
 #[test]
 fn bindgen_test_layout_amdgpu_bo_metadata() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_bo_metadata>(),
-        280usize,
-        concat!("Size of: ", stringify!(amdgpu_bo_metadata))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_bo_metadata>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_bo_metadata))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_metadata>())).flags as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_metadata),
-            "::",
-            stringify!(flags)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_metadata>())).tiling_info as *const _ as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_metadata),
-            "::",
-            stringify!(tiling_info)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_bo_metadata>())).size_metadata as *const _ as usize
-        },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_metadata),
-            "::",
-            stringify!(size_metadata)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_metadata>())).umd_metadata as *const _ as usize },
-        20usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_metadata),
-            "::",
-            stringify!(umd_metadata)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_bo_metadata>(),
+		280usize,
+		concat!("Size of: ", stringify!(amdgpu_bo_metadata))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_bo_metadata>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_bo_metadata))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_metadata>())).flags as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_metadata),
+			"::",
+			stringify!(flags)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_metadata>())).tiling_info as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_metadata),
+			"::",
+			stringify!(tiling_info)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_metadata>())).size_metadata as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_metadata),
+			"::",
+			stringify!(size_metadata)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_metadata>())).umd_metadata as *const _ as usize },
+		20usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_metadata),
+			"::",
+			stringify!(umd_metadata)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct amdgpu_bo_info {
-    pub alloc_size: u64,
-    pub phys_alignment: u64,
-    pub preferred_heap: u32,
-    pub alloc_flags: u64,
-    pub metadata: amdgpu_bo_metadata,
+	pub alloc_size: u64,
+	pub phys_alignment: u64,
+	pub preferred_heap: u32,
+	pub alloc_flags: u64,
+	pub metadata: amdgpu_bo_metadata,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_bo_info() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_bo_info>(),
-        312usize,
-        concat!("Size of: ", stringify!(amdgpu_bo_info))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_bo_info>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_bo_info))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).alloc_size as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_info),
-            "::",
-            stringify!(alloc_size)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).phys_alignment as *const _ as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_info),
-            "::",
-            stringify!(phys_alignment)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).preferred_heap as *const _ as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_info),
-            "::",
-            stringify!(preferred_heap)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).alloc_flags as *const _ as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_info),
-            "::",
-            stringify!(alloc_flags)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).metadata as *const _ as usize },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_info),
-            "::",
-            stringify!(metadata)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_bo_info>(),
+		312usize,
+		concat!("Size of: ", stringify!(amdgpu_bo_info))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_bo_info>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_bo_info))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).alloc_size as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_info),
+			"::",
+			stringify!(alloc_size)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).phys_alignment as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_info),
+			"::",
+			stringify!(phys_alignment)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).preferred_heap as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_info),
+			"::",
+			stringify!(preferred_heap)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).alloc_flags as *const _ as usize },
+		24usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_info),
+			"::",
+			stringify!(alloc_flags)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_info>())).metadata as *const _ as usize },
+		32usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_info),
+			"::",
+			stringify!(metadata)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_bo_import_result {
-    pub buf_handle: amdgpu_bo_handle,
-    pub alloc_size: u64,
+	pub buf_handle: amdgpu_bo_handle,
+	pub alloc_size: u64,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_bo_import_result() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_bo_import_result>(),
-        16usize,
-        concat!("Size of: ", stringify!(amdgpu_bo_import_result))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_bo_import_result>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_bo_import_result))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_bo_import_result>())).buf_handle as *const _ as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_import_result),
-            "::",
-            stringify!(buf_handle)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_bo_import_result>())).alloc_size as *const _ as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_bo_import_result),
-            "::",
-            stringify!(alloc_size)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_bo_import_result>(),
+		16usize,
+		concat!("Size of: ", stringify!(amdgpu_bo_import_result))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_bo_import_result>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_bo_import_result))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_import_result>())).buf_handle as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_import_result),
+			"::",
+			stringify!(buf_handle)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_bo_import_result>())).alloc_size as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_bo_import_result),
+			"::",
+			stringify!(alloc_size)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_gds_resource_info {
-    pub gds_gfx_partition_size: u32,
-    pub compute_partition_size: u32,
-    pub gds_total_size: u32,
-    pub gws_per_gfx_partition: u32,
-    pub gws_per_compute_partition: u32,
-    pub oa_per_gfx_partition: u32,
-    pub oa_per_compute_partition: u32,
+	pub gds_gfx_partition_size: u32,
+	pub compute_partition_size: u32,
+	pub gds_total_size: u32,
+	pub gws_per_gfx_partition: u32,
+	pub gws_per_compute_partition: u32,
+	pub oa_per_gfx_partition: u32,
+	pub oa_per_compute_partition: u32,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_gds_resource_info() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_gds_resource_info>(),
-        28usize,
-        concat!("Size of: ", stringify!(amdgpu_gds_resource_info))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_gds_resource_info>(),
-        4usize,
-        concat!("Alignment of ", stringify!(amdgpu_gds_resource_info))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gds_gfx_partition_size as *const _
-                as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gds_resource_info),
-            "::",
-            stringify!(gds_gfx_partition_size)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).compute_partition_size as *const _
-                as usize
-        },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gds_resource_info),
-            "::",
-            stringify!(compute_partition_size)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gds_total_size as *const _ as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gds_resource_info),
-            "::",
-            stringify!(gds_total_size)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gws_per_gfx_partition as *const _
-                as usize
-        },
-        12usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gds_resource_info),
-            "::",
-            stringify!(gws_per_gfx_partition)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gws_per_compute_partition
-                as *const _ as usize
-        },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gds_resource_info),
-            "::",
-            stringify!(gws_per_compute_partition)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).oa_per_gfx_partition as *const _
-                as usize
-        },
-        20usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gds_resource_info),
-            "::",
-            stringify!(oa_per_gfx_partition)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).oa_per_compute_partition
-                as *const _ as usize
-        },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gds_resource_info),
-            "::",
-            stringify!(oa_per_compute_partition)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_gds_resource_info>(),
+		28usize,
+		concat!("Size of: ", stringify!(amdgpu_gds_resource_info))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_gds_resource_info>(),
+		4usize,
+		concat!("Alignment of ", stringify!(amdgpu_gds_resource_info))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gds_gfx_partition_size as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gds_resource_info),
+			"::",
+			stringify!(gds_gfx_partition_size)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).compute_partition_size as *const _ as usize },
+		4usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gds_resource_info),
+			"::",
+			stringify!(compute_partition_size)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gds_total_size as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gds_resource_info),
+			"::",
+			stringify!(gds_total_size)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gws_per_gfx_partition as *const _ as usize },
+		12usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gds_resource_info),
+			"::",
+			stringify!(gws_per_gfx_partition)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).gws_per_compute_partition as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gds_resource_info),
+			"::",
+			stringify!(gws_per_compute_partition)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).oa_per_gfx_partition as *const _ as usize },
+		20usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gds_resource_info),
+			"::",
+			stringify!(oa_per_gfx_partition)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gds_resource_info>())).oa_per_compute_partition as *const _ as usize },
+		24usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gds_resource_info),
+			"::",
+			stringify!(oa_per_compute_partition)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_cs_fence {
-    pub context: amdgpu_context_handle,
-    pub ip_type: u32,
-    pub ip_instance: u32,
-    pub ring: u32,
-    pub fence: u64,
+	pub context: amdgpu_context_handle,
+	pub ip_type: u32,
+	pub ip_instance: u32,
+	pub ring: u32,
+	pub fence: u64,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_cs_fence() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_cs_fence>(),
-        32usize,
-        concat!("Size of: ", stringify!(amdgpu_cs_fence))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_cs_fence>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_cs_fence))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).context as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_fence),
-            "::",
-            stringify!(context)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).ip_type as *const _ as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_fence),
-            "::",
-            stringify!(ip_type)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).ip_instance as *const _ as usize },
-        12usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_fence),
-            "::",
-            stringify!(ip_instance)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).ring as *const _ as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_fence),
-            "::",
-            stringify!(ring)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).fence as *const _ as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_fence),
-            "::",
-            stringify!(fence)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_cs_fence>(),
+		32usize,
+		concat!("Size of: ", stringify!(amdgpu_cs_fence))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_cs_fence>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_cs_fence))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).context as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_fence),
+			"::",
+			stringify!(context)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).ip_type as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_fence),
+			"::",
+			stringify!(ip_type)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).ip_instance as *const _ as usize },
+		12usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_fence),
+			"::",
+			stringify!(ip_instance)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).ring as *const _ as usize },
+		16usize,
+		concat!("Offset of field: ", stringify!(amdgpu_cs_fence), "::", stringify!(ring))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence>())).fence as *const _ as usize },
+		24usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_fence),
+			"::",
+			stringify!(fence)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_cs_ib_info {
-    pub flags: u64,
-    pub ib_mc_address: u64,
-    pub size: u32,
+	pub flags: u64,
+	pub ib_mc_address: u64,
+	pub size: u32,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_cs_ib_info() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_cs_ib_info>(),
-        24usize,
-        concat!("Size of: ", stringify!(amdgpu_cs_ib_info))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_cs_ib_info>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_cs_ib_info))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_ib_info>())).flags as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_ib_info),
-            "::",
-            stringify!(flags)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_ib_info>())).ib_mc_address as *const _ as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_ib_info),
-            "::",
-            stringify!(ib_mc_address)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_ib_info>())).size as *const _ as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_ib_info),
-            "::",
-            stringify!(size)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_cs_ib_info>(),
+		24usize,
+		concat!("Size of: ", stringify!(amdgpu_cs_ib_info))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_cs_ib_info>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_cs_ib_info))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_ib_info>())).flags as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_ib_info),
+			"::",
+			stringify!(flags)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_ib_info>())).ib_mc_address as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_ib_info),
+			"::",
+			stringify!(ib_mc_address)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_ib_info>())).size as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_ib_info),
+			"::",
+			stringify!(size)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_cs_fence_info {
-    pub handle: amdgpu_bo_handle,
-    pub offset: u64,
+	pub handle: amdgpu_bo_handle,
+	pub offset: u64,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_cs_fence_info() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_cs_fence_info>(),
-        16usize,
-        concat!("Size of: ", stringify!(amdgpu_cs_fence_info))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_cs_fence_info>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_cs_fence_info))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence_info>())).handle as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_fence_info),
-            "::",
-            stringify!(handle)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence_info>())).offset as *const _ as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_fence_info),
-            "::",
-            stringify!(offset)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_cs_fence_info>(),
+		16usize,
+		concat!("Size of: ", stringify!(amdgpu_cs_fence_info))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_cs_fence_info>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_cs_fence_info))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence_info>())).handle as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_fence_info),
+			"::",
+			stringify!(handle)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_fence_info>())).offset as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_fence_info),
+			"::",
+			stringify!(offset)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_cs_request {
-    pub flags: u64,
-    pub ip_type: ::std::os::raw::c_uint,
-    pub ip_instance: ::std::os::raw::c_uint,
-    pub ring: u32,
-    pub resources: amdgpu_bo_list_handle,
-    pub number_of_dependencies: u32,
-    pub dependencies: *mut amdgpu_cs_fence,
-    pub number_of_ibs: u32,
-    pub ibs: *mut amdgpu_cs_ib_info,
-    pub seq_no: u64,
-    pub fence_info: amdgpu_cs_fence_info,
+	pub flags: u64,
+	pub ip_type: ::std::os::raw::c_uint,
+	pub ip_instance: ::std::os::raw::c_uint,
+	pub ring: u32,
+	pub resources: amdgpu_bo_list_handle,
+	pub number_of_dependencies: u32,
+	pub dependencies: *mut amdgpu_cs_fence,
+	pub number_of_ibs: u32,
+	pub ibs: *mut amdgpu_cs_ib_info,
+	pub seq_no: u64,
+	pub fence_info: amdgpu_cs_fence_info,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_cs_request() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_cs_request>(),
-        88usize,
-        concat!("Size of: ", stringify!(amdgpu_cs_request))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_cs_request>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_cs_request))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).flags as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(flags)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ip_type as *const _ as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(ip_type)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ip_instance as *const _ as usize },
-        12usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(ip_instance)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ring as *const _ as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(ring)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).resources as *const _ as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(resources)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_cs_request>())).number_of_dependencies as *const _
-                as usize
-        },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(number_of_dependencies)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).dependencies as *const _ as usize },
-        40usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(dependencies)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).number_of_ibs as *const _ as usize },
-        48usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(number_of_ibs)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ibs as *const _ as usize },
-        56usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(ibs)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).seq_no as *const _ as usize },
-        64usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(seq_no)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).fence_info as *const _ as usize },
-        72usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_cs_request),
-            "::",
-            stringify!(fence_info)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_cs_request>(),
+		88usize,
+		concat!("Size of: ", stringify!(amdgpu_cs_request))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_cs_request>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_cs_request))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).flags as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(flags)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ip_type as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(ip_type)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ip_instance as *const _ as usize },
+		12usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(ip_instance)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ring as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(ring)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).resources as *const _ as usize },
+		24usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(resources)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).number_of_dependencies as *const _ as usize },
+		32usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(number_of_dependencies)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).dependencies as *const _ as usize },
+		40usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(dependencies)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).number_of_ibs as *const _ as usize },
+		48usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(number_of_ibs)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).ibs as *const _ as usize },
+		56usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(ibs)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).seq_no as *const _ as usize },
+		64usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(seq_no)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_cs_request>())).fence_info as *const _ as usize },
+		72usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_cs_request),
+			"::",
+			stringify!(fence_info)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_buffer_size_alignments {
-    pub size_local: u64,
-    pub size_remote: u64,
+	pub size_local: u64,
+	pub size_remote: u64,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_buffer_size_alignments() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_buffer_size_alignments>(),
-        16usize,
-        concat!("Size of: ", stringify!(amdgpu_buffer_size_alignments))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_buffer_size_alignments>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_buffer_size_alignments))
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_buffer_size_alignments>())).size_local as *const _
-                as usize
-        },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_buffer_size_alignments),
-            "::",
-            stringify!(size_local)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_buffer_size_alignments>())).size_remote as *const _
-                as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_buffer_size_alignments),
-            "::",
-            stringify!(size_remote)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_buffer_size_alignments>(),
+		16usize,
+		concat!("Size of: ", stringify!(amdgpu_buffer_size_alignments))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_buffer_size_alignments>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_buffer_size_alignments))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_buffer_size_alignments>())).size_local as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_buffer_size_alignments),
+			"::",
+			stringify!(size_local)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_buffer_size_alignments>())).size_remote as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_buffer_size_alignments),
+			"::",
+			stringify!(size_remote)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_heap_info {
-    pub heap_size: u64,
-    pub heap_usage: u64,
-    pub max_allocation: u64,
+	pub heap_size: u64,
+	pub heap_usage: u64,
+	pub max_allocation: u64,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_heap_info() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_heap_info>(),
-        24usize,
-        concat!("Size of: ", stringify!(amdgpu_heap_info))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_heap_info>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_heap_info))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_heap_info>())).heap_size as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_heap_info),
-            "::",
-            stringify!(heap_size)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_heap_info>())).heap_usage as *const _ as usize },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_heap_info),
-            "::",
-            stringify!(heap_usage)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_heap_info>())).max_allocation as *const _ as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_heap_info),
-            "::",
-            stringify!(max_allocation)
-        )
-    );
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_heap_info>(),
+		24usize,
+		concat!("Size of: ", stringify!(amdgpu_heap_info))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_heap_info>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_heap_info))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_heap_info>())).heap_size as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_heap_info),
+			"::",
+			stringify!(heap_size)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_heap_info>())).heap_usage as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_heap_info),
+			"::",
+			stringify!(heap_usage)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_heap_info>())).max_allocation as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_heap_info),
+			"::",
+			stringify!(max_allocation)
+		)
+	);
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct amdgpu_gpu_info {
-    pub asic_id: u32,
-    pub chip_rev: u32,
-    pub chip_external_rev: u32,
-    pub family_id: u32,
-    pub ids_flags: u64,
-    pub max_engine_clk: u64,
-    pub max_memory_clk: u64,
-    pub num_shader_engines: u32,
-    pub num_shader_arrays_per_engine: u32,
-    pub avail_quad_shader_pipes: u32,
-    pub max_quad_shader_pipes: u32,
-    pub cache_entries_per_quad_pipe: u32,
-    pub num_hw_gfx_contexts: u32,
-    pub rb_pipes: u32,
-    pub enabled_rb_pipes_mask: u32,
-    pub gpu_counter_freq: u32,
-    pub backend_disable: [u32; 4usize],
-    pub mc_arb_ramcfg: u32,
-    pub gb_addr_cfg: u32,
-    pub gb_tile_mode: [u32; 32usize],
-    pub gb_macro_tile_mode: [u32; 16usize],
-    pub pa_sc_raster_cfg: [u32; 4usize],
-    pub pa_sc_raster_cfg1: [u32; 4usize],
-    pub cu_active_number: u32,
-    pub cu_ao_mask: u32,
-    pub cu_bitmap: [[u32; 4usize]; 4usize],
-    pub vram_type: u32,
-    pub vram_bit_width: u32,
-    pub ce_ram_size: u32,
-    pub vce_harvest_config: u32,
-    pub pci_rev_id: u32,
+	pub asic_id: u32,
+	pub chip_rev: u32,
+	pub chip_external_rev: u32,
+	pub family_id: u32,
+	pub ids_flags: u64,
+	pub max_engine_clk: u64,
+	pub max_memory_clk: u64,
+	pub num_shader_engines: u32,
+	pub num_shader_arrays_per_engine: u32,
+	pub avail_quad_shader_pipes: u32,
+	pub max_quad_shader_pipes: u32,
+	pub cache_entries_per_quad_pipe: u32,
+	pub num_hw_gfx_contexts: u32,
+	pub rb_pipes: u32,
+	pub enabled_rb_pipes_mask: u32,
+	pub gpu_counter_freq: u32,
+	pub backend_disable: [u32; 4usize],
+	pub mc_arb_ramcfg: u32,
+	pub gb_addr_cfg: u32,
+	pub gb_tile_mode: [u32; 32usize],
+	pub gb_macro_tile_mode: [u32; 16usize],
+	pub pa_sc_raster_cfg: [u32; 4usize],
+	pub pa_sc_raster_cfg1: [u32; 4usize],
+	pub cu_active_number: u32,
+	pub cu_ao_mask: u32,
+	pub cu_bitmap: [[u32; 4usize]; 4usize],
+	pub vram_type: u32,
+	pub vram_bit_width: u32,
+	pub ce_ram_size: u32,
+	pub vce_harvest_config: u32,
+	pub pci_rev_id: u32,
 }
 #[test]
 fn bindgen_test_layout_amdgpu_gpu_info() {
-    assert_eq!(
-        ::std::mem::size_of::<amdgpu_gpu_info>(),
-        416usize,
-        concat!("Size of: ", stringify!(amdgpu_gpu_info))
-    );
-    assert_eq!(
-        ::std::mem::align_of::<amdgpu_gpu_info>(),
-        8usize,
-        concat!("Alignment of ", stringify!(amdgpu_gpu_info))
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).asic_id as *const _ as usize },
-        0usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(asic_id)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).chip_rev as *const _ as usize },
-        4usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(chip_rev)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).chip_external_rev as *const _ as usize
-        },
-        8usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(chip_external_rev)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).family_id as *const _ as usize },
-        12usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(family_id)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).ids_flags as *const _ as usize },
-        16usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(ids_flags)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).max_engine_clk as *const _ as usize },
-        24usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(max_engine_clk)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).max_memory_clk as *const _ as usize },
-        32usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(max_memory_clk)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).num_shader_engines as *const _ as usize
-        },
-        40usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(num_shader_engines)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).num_shader_arrays_per_engine as *const _
-                as usize
-        },
-        44usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(num_shader_arrays_per_engine)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).avail_quad_shader_pipes as *const _ as usize
-        },
-        48usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(avail_quad_shader_pipes)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).max_quad_shader_pipes as *const _ as usize
-        },
-        52usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(max_quad_shader_pipes)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).cache_entries_per_quad_pipe as *const _
-                as usize
-        },
-        56usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(cache_entries_per_quad_pipe)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).num_hw_gfx_contexts as *const _ as usize
-        },
-        60usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(num_hw_gfx_contexts)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).rb_pipes as *const _ as usize },
-        64usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(rb_pipes)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).enabled_rb_pipes_mask as *const _ as usize
-        },
-        68usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(enabled_rb_pipes_mask)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).gpu_counter_freq as *const _ as usize
-        },
-        72usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(gpu_counter_freq)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).backend_disable as *const _ as usize },
-        76usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(backend_disable)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).mc_arb_ramcfg as *const _ as usize },
-        92usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(mc_arb_ramcfg)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).gb_addr_cfg as *const _ as usize },
-        96usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(gb_addr_cfg)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).gb_tile_mode as *const _ as usize },
-        100usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(gb_tile_mode)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).gb_macro_tile_mode as *const _ as usize
-        },
-        228usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(gb_macro_tile_mode)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).pa_sc_raster_cfg as *const _ as usize
-        },
-        292usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(pa_sc_raster_cfg)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).pa_sc_raster_cfg1 as *const _ as usize
-        },
-        308usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(pa_sc_raster_cfg1)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).cu_active_number as *const _ as usize
-        },
-        324usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(cu_active_number)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).cu_ao_mask as *const _ as usize },
-        328usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(cu_ao_mask)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).cu_bitmap as *const _ as usize },
-        332usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(cu_bitmap)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).vram_type as *const _ as usize },
-        396usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(vram_type)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).vram_bit_width as *const _ as usize },
-        400usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(vram_bit_width)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).ce_ram_size as *const _ as usize },
-        404usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(ce_ram_size)
-        )
-    );
-    assert_eq!(
-        unsafe {
-            &(*(::std::ptr::null::<amdgpu_gpu_info>())).vce_harvest_config as *const _ as usize
-        },
-        408usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(vce_harvest_config)
-        )
-    );
-    assert_eq!(
-        unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).pci_rev_id as *const _ as usize },
-        412usize,
-        concat!(
-            "Offset of field: ",
-            stringify!(amdgpu_gpu_info),
-            "::",
-            stringify!(pci_rev_id)
-        )
-    );
-}
-extern "C" {
-    pub fn amdgpu_device_initialize(
-        fd: ::std::os::raw::c_int,
-        major_version: *mut u32,
-        minor_version: *mut u32,
-        device_handle: *mut amdgpu_device_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_device_deinitialize(device_handle: amdgpu_device_handle)
-        -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_alloc(
-        dev: amdgpu_device_handle,
-        alloc_buffer: *mut amdgpu_bo_alloc_request,
-        buf_handle: *mut amdgpu_bo_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_set_metadata(
-        buf_handle: amdgpu_bo_handle,
-        info: *mut amdgpu_bo_metadata,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_query_info(
-        buf_handle: amdgpu_bo_handle,
-        info: *mut amdgpu_bo_info,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_export(
-        buf_handle: amdgpu_bo_handle,
-        type_: amdgpu_bo_handle_type,
-        shared_handle: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_import(
-        dev: amdgpu_device_handle,
-        type_: amdgpu_bo_handle_type,
-        shared_handle: u32,
-        output: *mut amdgpu_bo_import_result,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_create_bo_from_user_mem(
-        dev: amdgpu_device_handle,
-        cpu: *mut ::std::os::raw::c_void,
-        size: u64,
-        buf_handle: *mut amdgpu_bo_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_find_bo_by_cpu_mapping(
-        dev: amdgpu_device_handle,
-        cpu: *mut ::std::os::raw::c_void,
-        size: u64,
-        buf_handle: *mut amdgpu_bo_handle,
-        offset_in_bo: *mut u64,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_free(buf_handle: amdgpu_bo_handle) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_inc_ref(bo: amdgpu_bo_handle);
-}
-extern "C" {
-    pub fn amdgpu_bo_cpu_map(
-        buf_handle: amdgpu_bo_handle,
-        cpu: *mut *mut ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_cpu_unmap(buf_handle: amdgpu_bo_handle) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_wait_for_idle(
-        buf_handle: amdgpu_bo_handle,
-        timeout_ns: u64,
-        buffer_busy: *mut bool,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_list_create_raw(
-        dev: amdgpu_device_handle,
-        number_of_buffers: u32,
-        buffers: *mut drm_amdgpu_bo_list_entry,
-        result: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_list_destroy_raw(
-        dev: amdgpu_device_handle,
-        bo_list: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_list_create(
-        dev: amdgpu_device_handle,
-        number_of_resources: u32,
-        resources: *mut amdgpu_bo_handle,
-        resource_prios: *mut u8,
-        result: *mut amdgpu_bo_list_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_list_destroy(handle: amdgpu_bo_list_handle) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_list_update(
-        handle: amdgpu_bo_list_handle,
-        number_of_resources: u32,
-        resources: *mut amdgpu_bo_handle,
-        resource_prios: *mut u8,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_ctx_create2(
-        dev: amdgpu_device_handle,
-        priority: u32,
-        context: *mut amdgpu_context_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_ctx_create(
-        dev: amdgpu_device_handle,
-        context: *mut amdgpu_context_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_ctx_free(context: amdgpu_context_handle) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_ctx_override_priority(
-        dev: amdgpu_device_handle,
-        context: amdgpu_context_handle,
-        master_fd: ::std::os::raw::c_int,
-        priority: ::std::os::raw::c_uint,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_query_reset_state(
-        context: amdgpu_context_handle,
-        state: *mut u32,
-        hangs: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_query_reset_state2(
-        context: amdgpu_context_handle,
-        flags: *mut u64,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_submit(
-        context: amdgpu_context_handle,
-        flags: u64,
-        ibs_request: *mut amdgpu_cs_request,
-        number_of_requests: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_query_fence_status(
-        fence: *mut amdgpu_cs_fence,
-        timeout_ns: u64,
-        flags: u64,
-        expired: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_wait_fences(
-        fences: *mut amdgpu_cs_fence,
-        fence_count: u32,
-        wait_all: bool,
-        timeout_ns: u64,
-        status: *mut u32,
-        first: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_buffer_size_alignment(
-        dev: amdgpu_device_handle,
-        info: *mut amdgpu_buffer_size_alignments,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_firmware_version(
-        dev: amdgpu_device_handle,
-        fw_type: ::std::os::raw::c_uint,
-        ip_instance: ::std::os::raw::c_uint,
-        index: ::std::os::raw::c_uint,
-        version: *mut u32,
-        feature: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_hw_ip_count(
-        dev: amdgpu_device_handle,
-        type_: ::std::os::raw::c_uint,
-        count: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_hw_ip_info(
-        dev: amdgpu_device_handle,
-        type_: ::std::os::raw::c_uint,
-        ip_instance: ::std::os::raw::c_uint,
-        info: *mut drm_amdgpu_info_hw_ip,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_heap_info(
-        dev: amdgpu_device_handle,
-        heap: u32,
-        flags: u32,
-        info: *mut amdgpu_heap_info,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_crtc_from_id(
-        dev: amdgpu_device_handle,
-        id: ::std::os::raw::c_uint,
-        result: *mut i32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_gpu_info(
-        dev: amdgpu_device_handle,
-        info: *mut amdgpu_gpu_info,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_info(
-        dev: amdgpu_device_handle,
-        info_id: ::std::os::raw::c_uint,
-        size: ::std::os::raw::c_uint,
-        value: *mut ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_sw_info(
-        dev: amdgpu_device_handle,
-        info: amdgpu_sw_info,
-        value: *mut ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_gds_info(
-        dev: amdgpu_device_handle,
-        gds_info: *mut amdgpu_gds_resource_info,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_query_sensor_info(
-        dev: amdgpu_device_handle,
-        sensor_type: ::std::os::raw::c_uint,
-        size: ::std::os::raw::c_uint,
-        value: *mut ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_read_mm_registers(
-        dev: amdgpu_device_handle,
-        dword_offset: ::std::os::raw::c_uint,
-        count: ::std::os::raw::c_uint,
-        instance: u32,
-        flags: u32,
-        values: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_va_range_alloc(
-        dev: amdgpu_device_handle,
-        va_range_type: amdgpu_gpu_va_range,
-        size: u64,
-        va_base_alignment: u64,
-        va_base_required: u64,
-        va_base_allocated: *mut u64,
-        va_range_handle: *mut amdgpu_va_handle,
-        flags: u64,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_va_range_free(va_range_handle: amdgpu_va_handle) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_va_range_query(
-        dev: amdgpu_device_handle,
-        type_: amdgpu_gpu_va_range,
-        start: *mut u64,
-        end: *mut u64,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_va_op(
-        bo: amdgpu_bo_handle,
-        offset: u64,
-        size: u64,
-        addr: u64,
-        flags: u64,
-        ops: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_bo_va_op_raw(
-        dev: amdgpu_device_handle,
-        bo: amdgpu_bo_handle,
-        offset: u64,
-        size: u64,
-        addr: u64,
-        flags: u64,
-        ops: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_create_semaphore(sem: *mut amdgpu_semaphore_handle) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_signal_semaphore(
-        ctx: amdgpu_context_handle,
-        ip_type: u32,
-        ip_instance: u32,
-        ring: u32,
-        sem: amdgpu_semaphore_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_wait_semaphore(
-        ctx: amdgpu_context_handle,
-        ip_type: u32,
-        ip_instance: u32,
-        ring: u32,
-        sem: amdgpu_semaphore_handle,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_destroy_semaphore(sem: amdgpu_semaphore_handle) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_get_marketing_name(dev: amdgpu_device_handle) -> *const ::std::os::raw::c_char;
-}
-extern "C" {
-    pub fn amdgpu_cs_create_syncobj2(
-        dev: amdgpu_device_handle,
-        flags: u32,
-        syncobj: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_create_syncobj(
-        dev: amdgpu_device_handle,
-        syncobj: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_destroy_syncobj(
-        dev: amdgpu_device_handle,
-        syncobj: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_reset(
-        dev: amdgpu_device_handle,
-        syncobjs: *const u32,
-        syncobj_count: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_signal(
-        dev: amdgpu_device_handle,
-        syncobjs: *const u32,
-        syncobj_count: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_timeline_signal(
-        dev: amdgpu_device_handle,
-        syncobjs: *const u32,
-        points: *mut u64,
-        syncobj_count: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_wait(
-        dev: amdgpu_device_handle,
-        handles: *mut u32,
-        num_handles: ::std::os::raw::c_uint,
-        timeout_nsec: i64,
-        flags: ::std::os::raw::c_uint,
-        first_signaled: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_timeline_wait(
-        dev: amdgpu_device_handle,
-        handles: *mut u32,
-        points: *mut u64,
-        num_handles: ::std::os::raw::c_uint,
-        timeout_nsec: i64,
-        flags: ::std::os::raw::c_uint,
-        first_signaled: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_query(
-        dev: amdgpu_device_handle,
-        handles: *mut u32,
-        points: *mut u64,
-        num_handles: ::std::os::raw::c_uint,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_export_syncobj(
-        dev: amdgpu_device_handle,
-        syncobj: u32,
-        shared_fd: *mut ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_import_syncobj(
-        dev: amdgpu_device_handle,
-        shared_fd: ::std::os::raw::c_int,
-        syncobj: *mut u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_export_sync_file(
-        dev: amdgpu_device_handle,
-        syncobj: u32,
-        sync_file_fd: *mut ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_import_sync_file(
-        dev: amdgpu_device_handle,
-        syncobj: u32,
-        sync_file_fd: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_export_sync_file2(
-        dev: amdgpu_device_handle,
-        syncobj: u32,
-        point: u64,
-        flags: u32,
-        sync_file_fd: *mut ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_import_sync_file2(
-        dev: amdgpu_device_handle,
-        syncobj: u32,
-        point: u64,
-        sync_file_fd: ::std::os::raw::c_int,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_syncobj_transfer(
-        dev: amdgpu_device_handle,
-        dst_handle: u32,
-        dst_point: u64,
-        src_handle: u32,
-        src_point: u64,
-        flags: u32,
-    ) -> ::std::os::raw::c_int;
-}
-extern "C" {
-    pub fn amdgpu_cs_fence_to_handle(
-        dev: amdgpu_device_handle,
-        fence: *mut amdgpu_cs_fence,
-        what: u32,
-        out_handle: *mut u32,
-    ) -> ::std::os::raw::c_int;
+	assert_eq!(
+		::std::mem::size_of::<amdgpu_gpu_info>(),
+		416usize,
+		concat!("Size of: ", stringify!(amdgpu_gpu_info))
+	);
+	assert_eq!(
+		::std::mem::align_of::<amdgpu_gpu_info>(),
+		8usize,
+		concat!("Alignment of ", stringify!(amdgpu_gpu_info))
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).asic_id as *const _ as usize },
+		0usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(asic_id)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).chip_rev as *const _ as usize },
+		4usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(chip_rev)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).chip_external_rev as *const _ as usize },
+		8usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(chip_external_rev)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).family_id as *const _ as usize },
+		12usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(family_id)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).ids_flags as *const _ as usize },
+		16usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(ids_flags)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).max_engine_clk as *const _ as usize },
+		24usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(max_engine_clk)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).max_memory_clk as *const _ as usize },
+		32usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(max_memory_clk)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).num_shader_engines as *const _ as usize },
+		40usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(num_shader_engines)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).num_shader_arrays_per_engine as *const _ as usize },
+		44usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(num_shader_arrays_per_engine)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).avail_quad_shader_pipes as *const _ as usize },
+		48usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(avail_quad_shader_pipes)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).max_quad_shader_pipes as *const _ as usize },
+		52usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(max_quad_shader_pipes)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).cache_entries_per_quad_pipe as *const _ as usize },
+		56usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(cache_entries_per_quad_pipe)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).num_hw_gfx_contexts as *const _ as usize },
+		60usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(num_hw_gfx_contexts)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).rb_pipes as *const _ as usize },
+		64usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(rb_pipes)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).enabled_rb_pipes_mask as *const _ as usize },
+		68usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(enabled_rb_pipes_mask)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).gpu_counter_freq as *const _ as usize },
+		72usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(gpu_counter_freq)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).backend_disable as *const _ as usize },
+		76usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(backend_disable)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).mc_arb_ramcfg as *const _ as usize },
+		92usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(mc_arb_ramcfg)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).gb_addr_cfg as *const _ as usize },
+		96usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(gb_addr_cfg)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).gb_tile_mode as *const _ as usize },
+		100usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(gb_tile_mode)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).gb_macro_tile_mode as *const _ as usize },
+		228usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(gb_macro_tile_mode)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).pa_sc_raster_cfg as *const _ as usize },
+		292usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(pa_sc_raster_cfg)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).pa_sc_raster_cfg1 as *const _ as usize },
+		308usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(pa_sc_raster_cfg1)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).cu_active_number as *const _ as usize },
+		324usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(cu_active_number)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).cu_ao_mask as *const _ as usize },
+		328usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(cu_ao_mask)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).cu_bitmap as *const _ as usize },
+		332usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(cu_bitmap)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).vram_type as *const _ as usize },
+		396usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(vram_type)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).vram_bit_width as *const _ as usize },
+		400usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(vram_bit_width)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).ce_ram_size as *const _ as usize },
+		404usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(ce_ram_size)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).vce_harvest_config as *const _ as usize },
+		408usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(vce_harvest_config)
+		)
+	);
+	assert_eq!(
+		unsafe { &(*(::std::ptr::null::<amdgpu_gpu_info>())).pci_rev_id as *const _ as usize },
+		412usize,
+		concat!(
+			"Offset of field: ",
+			stringify!(amdgpu_gpu_info),
+			"::",
+			stringify!(pci_rev_id)
+		)
+	);
+}
+extern "C" {
+	pub fn amdgpu_device_initialize(
+		fd: ::std::os::raw::c_int,
+		major_version: *mut u32,
+		minor_version: *mut u32,
+		device_handle: *mut amdgpu_device_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_device_deinitialize(device_handle: amdgpu_device_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_alloc(
+		dev: amdgpu_device_handle,
+		alloc_buffer: *mut amdgpu_bo_alloc_request,
+		buf_handle: *mut amdgpu_bo_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_set_metadata(buf_handle: amdgpu_bo_handle, info: *mut amdgpu_bo_metadata)
+		-> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_query_info(buf_handle: amdgpu_bo_handle, info: *mut amdgpu_bo_info) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_export(
+		buf_handle: amdgpu_bo_handle,
+		type_: amdgpu_bo_handle_type,
+		shared_handle: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_import(
+		dev: amdgpu_device_handle,
+		type_: amdgpu_bo_handle_type,
+		shared_handle: u32,
+		output: *mut amdgpu_bo_import_result,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_create_bo_from_user_mem(
+		dev: amdgpu_device_handle,
+		cpu: *mut ::std::os::raw::c_void,
+		size: u64,
+		buf_handle: *mut amdgpu_bo_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_find_bo_by_cpu_mapping(
+		dev: amdgpu_device_handle,
+		cpu: *mut ::std::os::raw::c_void,
+		size: u64,
+		buf_handle: *mut amdgpu_bo_handle,
+		offset_in_bo: *mut u64,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_free(buf_handle: amdgpu_bo_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_inc_ref(bo: amdgpu_bo_handle);
+}
+extern "C" {
+	pub fn amdgpu_bo_cpu_map(
+		buf_handle: amdgpu_bo_handle,
+		cpu: *mut *mut ::std::os::raw::c_void,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_cpu_unmap(buf_handle: amdgpu_bo_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_wait_for_idle(
+		buf_handle: amdgpu_bo_handle,
+		timeout_ns: u64,
+		buffer_busy: *mut bool,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_list_create_raw(
+		dev: amdgpu_device_handle,
+		number_of_buffers: u32,
+		buffers: *mut drm_amdgpu_bo_list_entry,
+		result: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_list_destroy_raw(dev: amdgpu_device_handle, bo_list: u32) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_list_create(
+		dev: amdgpu_device_handle,
+		number_of_resources: u32,
+		resources: *mut amdgpu_bo_handle,
+		resource_prios: *mut u8,
+		result: *mut amdgpu_bo_list_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_list_destroy(handle: amdgpu_bo_list_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_list_update(
+		handle: amdgpu_bo_list_handle,
+		number_of_resources: u32,
+		resources: *mut amdgpu_bo_handle,
+		resource_prios: *mut u8,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_ctx_create2(
+		dev: amdgpu_device_handle,
+		priority: u32,
+		context: *mut amdgpu_context_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_ctx_create(
+		dev: amdgpu_device_handle,
+		context: *mut amdgpu_context_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_ctx_free(context: amdgpu_context_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_ctx_override_priority(
+		dev: amdgpu_device_handle,
+		context: amdgpu_context_handle,
+		master_fd: ::std::os::raw::c_int,
+		priority: ::std::os::raw::c_uint,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_query_reset_state(
+		context: amdgpu_context_handle,
+		state: *mut u32,
+		hangs: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_query_reset_state2(context: amdgpu_context_handle, flags: *mut u64) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_submit(
+		context: amdgpu_context_handle,
+		flags: u64,
+		ibs_request: *mut amdgpu_cs_request,
+		number_of_requests: u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_query_fence_status(
+		fence: *mut amdgpu_cs_fence,
+		timeout_ns: u64,
+		flags: u64,
+		expired: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_wait_fences(
+		fences: *mut amdgpu_cs_fence,
+		fence_count: u32,
+		wait_all: bool,
+		timeout_ns: u64,
+		status: *mut u32,
+		first: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_buffer_size_alignment(
+		dev: amdgpu_device_handle,
+		info: *mut amdgpu_buffer_size_alignments,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_firmware_version(
+		dev: amdgpu_device_handle,
+		fw_type: ::std::os::raw::c_uint,
+		ip_instance: ::std::os::raw::c_uint,
+		index: ::std::os::raw::c_uint,
+		version: *mut u32,
+		feature: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_hw_ip_count(
+		dev: amdgpu_device_handle,
+		type_: ::std::os::raw::c_uint,
+		count: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_hw_ip_info(
+		dev: amdgpu_device_handle,
+		type_: ::std::os::raw::c_uint,
+		ip_instance: ::std::os::raw::c_uint,
+		info: *mut drm_amdgpu_info_hw_ip,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_heap_info(
+		dev: amdgpu_device_handle,
+		heap: u32,
+		flags: u32,
+		info: *mut amdgpu_heap_info,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_crtc_from_id(
+		dev: amdgpu_device_handle,
+		id: ::std::os::raw::c_uint,
+		result: *mut i32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_gpu_info(dev: amdgpu_device_handle, info: *mut amdgpu_gpu_info) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_info(
+		dev: amdgpu_device_handle,
+		info_id: ::std::os::raw::c_uint,
+		size: ::std::os::raw::c_uint,
+		value: *mut ::std::os::raw::c_void,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_sw_info(
+		dev: amdgpu_device_handle,
+		info: amdgpu_sw_info,
+		value: *mut ::std::os::raw::c_void,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_gds_info(
+		dev: amdgpu_device_handle,
+		gds_info: *mut amdgpu_gds_resource_info,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_query_sensor_info(
+		dev: amdgpu_device_handle,
+		sensor_type: ::std::os::raw::c_uint,
+		size: ::std::os::raw::c_uint,
+		value: *mut ::std::os::raw::c_void,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_read_mm_registers(
+		dev: amdgpu_device_handle,
+		dword_offset: ::std::os::raw::c_uint,
+		count: ::std::os::raw::c_uint,
+		instance: u32,
+		flags: u32,
+		values: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_va_range_alloc(
+		dev: amdgpu_device_handle,
+		va_range_type: amdgpu_gpu_va_range,
+		size: u64,
+		va_base_alignment: u64,
+		va_base_required: u64,
+		va_base_allocated: *mut u64,
+		va_range_handle: *mut amdgpu_va_handle,
+		flags: u64,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_va_range_free(va_range_handle: amdgpu_va_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_va_range_query(
+		dev: amdgpu_device_handle,
+		type_: amdgpu_gpu_va_range,
+		start: *mut u64,
+		end: *mut u64,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_va_op(
+		bo: amdgpu_bo_handle,
+		offset: u64,
+		size: u64,
+		addr: u64,
+		flags: u64,
+		ops: u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_bo_va_op_raw(
+		dev: amdgpu_device_handle,
+		bo: amdgpu_bo_handle,
+		offset: u64,
+		size: u64,
+		addr: u64,
+		flags: u64,
+		ops: u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_create_semaphore(sem: *mut amdgpu_semaphore_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_signal_semaphore(
+		ctx: amdgpu_context_handle,
+		ip_type: u32,
+		ip_instance: u32,
+		ring: u32,
+		sem: amdgpu_semaphore_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_wait_semaphore(
+		ctx: amdgpu_context_handle,
+		ip_type: u32,
+		ip_instance: u32,
+		ring: u32,
+		sem: amdgpu_semaphore_handle,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_destroy_semaphore(sem: amdgpu_semaphore_handle) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_get_marketing_name(dev: amdgpu_device_handle) -> *const ::std::os::raw::c_char;
+}
+extern "C" {
+	pub fn amdgpu_cs_create_syncobj2(dev: amdgpu_device_handle, flags: u32, syncobj: *mut u32)
+		-> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_create_syncobj(dev: amdgpu_device_handle, syncobj: *mut u32) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_destroy_syncobj(dev: amdgpu_device_handle, syncobj: u32) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_reset(
+		dev: amdgpu_device_handle,
+		syncobjs: *const u32,
+		syncobj_count: u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_signal(
+		dev: amdgpu_device_handle,
+		syncobjs: *const u32,
+		syncobj_count: u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_timeline_signal(
+		dev: amdgpu_device_handle,
+		syncobjs: *const u32,
+		points: *mut u64,
+		syncobj_count: u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_wait(
+		dev: amdgpu_device_handle,
+		handles: *mut u32,
+		num_handles: ::std::os::raw::c_uint,
+		timeout_nsec: i64,
+		flags: ::std::os::raw::c_uint,
+		first_signaled: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_timeline_wait(
+		dev: amdgpu_device_handle,
+		handles: *mut u32,
+		points: *mut u64,
+		num_handles: ::std::os::raw::c_uint,
+		timeout_nsec: i64,
+		flags: ::std::os::raw::c_uint,
+		first_signaled: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_query(
+		dev: amdgpu_device_handle,
+		handles: *mut u32,
+		points: *mut u64,
+		num_handles: ::std::os::raw::c_uint,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_export_syncobj(
+		dev: amdgpu_device_handle,
+		syncobj: u32,
+		shared_fd: *mut ::std::os::raw::c_int,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_import_syncobj(
+		dev: amdgpu_device_handle,
+		shared_fd: ::std::os::raw::c_int,
+		syncobj: *mut u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_export_sync_file(
+		dev: amdgpu_device_handle,
+		syncobj: u32,
+		sync_file_fd: *mut ::std::os::raw::c_int,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_import_sync_file(
+		dev: amdgpu_device_handle,
+		syncobj: u32,
+		sync_file_fd: ::std::os::raw::c_int,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_export_sync_file2(
+		dev: amdgpu_device_handle,
+		syncobj: u32,
+		point: u64,
+		flags: u32,
+		sync_file_fd: *mut ::std::os::raw::c_int,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_import_sync_file2(
+		dev: amdgpu_device_handle,
+		syncobj: u32,
+		point: u64,
+		sync_file_fd: ::std::os::raw::c_int,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_syncobj_transfer(
+		dev: amdgpu_device_handle,
+		dst_handle: u32,
+		dst_point: u64,
+		src_handle: u32,
+		src_point: u64,
+		flags: u32,
+	) -> ::std::os::raw::c_int;
+}
+extern "C" {
+	pub fn amdgpu_cs_fence_to_handle(
+		dev: amdgpu_device_handle,
+		fence: *mut amdgpu_cs_fence,
+		what: u32,
+		out_handle: *mut u32,
+	) -> ::std::os::raw::c_int;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct drm_amdgpu_cs_chunk {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct drm_amdgpu_cs_chunk_dep {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct drm_amdgpu_cs_chunk_data {
-    _unused: [u8; 0],
+	_unused: [u8; 0],
 }
 extern "C" {
-    pub fn amdgpu_cs_submit_raw(
-        dev: amdgpu_device_handle,
-        context: amdgpu_context_handle,
-        bo_list_handle: amdgpu_bo_list_handle,
-        num_chunks: ::std::os::raw::c_int,
-        chunks: *mut drm_amdgpu_cs_chunk,
-        seq_no: *mut u64,
-    ) -> ::std::os::raw::c_int;
+	pub fn amdgpu_cs_submit_raw(
+		dev: amdgpu_device_handle,
+		context: amdgpu_context_handle,
+		bo_list_handle: amdgpu_bo_list_handle,
+		num_chunks: ::std::os::raw::c_int,
+		chunks: *mut drm_amdgpu_cs_chunk,
+		seq_no: *mut u64,
+	) -> ::std::os::raw::c_int;
 }
 extern "C" {
-    pub fn amdgpu_cs_submit_raw2(
-        dev: amdgpu_device_handle,
-        context: amdgpu_context_handle,
-        bo_list_handle: u32,
-        num_chunks: ::std::os::raw::c_int,
-        chunks: *mut drm_amdgpu_cs_chunk,
-        seq_no: *mut u64,
-    ) -> ::std::os::raw::c_int;
+	pub fn amdgpu_cs_submit_raw2(
+		dev: amdgpu_device_handle,
+		context: amdgpu_context_handle,
+		bo_list_handle: u32,
+		num_chunks: ::std::os::raw::c_int,
+		chunks: *mut drm_amdgpu_cs_chunk,
+		seq_no: *mut u64,
+	) -> ::std::os::raw::c_int;
 }
 extern "C" {
-    pub fn amdgpu_cs_chunk_fence_to_dep(
-        fence: *mut amdgpu_cs_fence,
-        dep: *mut drm_amdgpu_cs_chunk_dep,
-    );
+	pub fn amdgpu_cs_chunk_fence_to_dep(fence: *mut amdgpu_cs_fence, dep: *mut drm_amdgpu_cs_chunk_dep);
 }
 extern "C" {
-    pub fn amdgpu_cs_chunk_fence_info_to_data(
-        fence_info: *mut amdgpu_cs_fence_info,
-        data: *mut drm_amdgpu_cs_chunk_data,
-    );
+	pub fn amdgpu_cs_chunk_fence_info_to_data(
+		fence_info: *mut amdgpu_cs_fence_info,
+		data: *mut drm_amdgpu_cs_chunk_data,
+	);
 }
 extern "C" {
-    pub fn amdgpu_vm_reserve_vmid(dev: amdgpu_device_handle, flags: u32) -> ::std::os::raw::c_int;
+	pub fn amdgpu_vm_reserve_vmid(dev: amdgpu_device_handle, flags: u32) -> ::std::os::raw::c_int;
 }
 extern "C" {
-    pub fn amdgpu_vm_unreserve_vmid(dev: amdgpu_device_handle, flags: u32)
-        -> ::std::os::raw::c_int;
+	pub fn amdgpu_vm_unreserve_vmid(dev: amdgpu_device_handle, flags: u32) -> ::std::os::raw::c_int;
 }

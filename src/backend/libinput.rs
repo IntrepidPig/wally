@@ -1,14 +1,24 @@
-use crate::backend::{InputBackend, BackendEvent, Backend};
-use crate::compositor::Compositor;
+use calloop::{
+	channel::{self, Channel, Sender},
+	generic::{Generic, EventedRawFd},
+	EventLoop, LoopHandle, Source,
+};
+
+use crate::{
+	compositor::{Compositor},
+	backend::{InputBackend, BackendEvent, Backend, KeyPress},
+};
 
 pub struct LibinputInputBackend {
 	udev: udev::Context,
 	libinput: input::Libinput,
-	event_source: calloop::Source<calloop::generic::Generic<calloop::generic::EventedRawFd>>,
+	event_source: Source<Generic<EventedRawFd>>,
+	event_sender: Sender<BackendEvent>,
+	event_receiver: Option<Channel<BackendEvent>>,
 }
 
 impl LibinputInputBackend {
-	pub fn new<B: Backend>(event_loop_handle: calloop::LoopHandle<Compositor<B>>) -> Result<Self, ()> {
+	pub fn new<B: Backend>(event_loop_handle: LoopHandle<Compositor<B>>) -> Result<Self, ()> {
 		struct RootLibinputInterface;
 		
 		impl input::LibinputInterface for RootLibinputInterface {
@@ -38,18 +48,19 @@ impl LibinputInputBackend {
 		
 		let libinput_raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&libinput);
 		let libinput_evented = calloop::generic::Generic::from_raw_fd(libinput_raw_fd);
-		let event_source = event_loop_handle.insert_source(libinput_evented, |event, compositor| {
-			let mut backend = compositor.backend.borrow_mut();
-			if let Some(event) = backend.poll_for_events() {
-				drop(backend);
-				compositor.handle_input_event(event)
-			}
+		let (event_sender, event_receiver) = channel::channel();
+		let event_source = event_loop_handle.insert_source(libinput_evented, move |event, compositor| {
+			let mut backend = compositor.backend.lock().unwrap();
+			backend.update_input_backend()
+				.map_err(|e| log::error!("Failed to update input backend")).unwrap();
 		}).expect("Failed to insert libinput event source into event loop");
 		
 		Ok(Self {
 			udev,
 			libinput,
 			event_source,
+			event_sender,
+			event_receiver: Some(event_receiver),
 		})
 	}
 }
@@ -61,20 +72,50 @@ impl InputBackend for LibinputInputBackend {
 		let _ = self.libinput.dispatch().map_err(|e| {
 			log::error!("Failed to dispatch libinput events: {}", e);
 		});
+		while let Some(event) = self.libinput.next() {
+			println!("Got libinput event {:?}", event);
+			if let Some(backend_event) = libinput_event_to_backend_event(event) {
+				self.event_sender.send(backend_event);
+			}
+		}
 		
 		Ok(())
 	}
 	
-	fn poll_for_events(&mut self) -> Option<BackendEvent> {
-		let _ = self.libinput.dispatch().map_err(|e| {
-			log::error!("Failed to dispatch libinput events: {}", e);
-		});
-		
-		if let Some(event) = self.libinput.next() {
-			log::warn!("Got event: {:?}", event);
-			Some(BackendEvent::KeyPress)
-		} else {
-			None
-		}
+	fn get_event_source(&mut self) -> Channel<BackendEvent> {
+		self.event_receiver.take().expect("Already took event receiver from libinput backend")
 	}
+}
+
+fn libinput_event_to_backend_event(event: input::Event) -> Option<BackendEvent> {
+	use input::{
+		event::{EventTrait, keyboard::KeyboardEventTrait, pointer::PointerEventTrait},
+	};
+	Some(match event {
+		input::Event::Keyboard(keyboard_event) => match keyboard_event {
+			input::event::KeyboardEvent::Key(keyboard_key_event) => {
+				BackendEvent::KeyPress(KeyPress {
+					serial: crate::compositor::get_input_serial(),
+					time: keyboard_key_event.time(),
+					key: keyboard_key_event.key(),
+					state: match keyboard_key_event.key_state() {
+						input::event::keyboard::KeyState::Pressed => wayland_server::protocol::wl_keyboard::KeyState::Pressed,
+						input::event::keyboard::KeyState::Released => wayland_server::protocol::wl_keyboard::KeyState::Released,
+					},
+				})
+			},
+		},
+		input::Event::Pointer(pointer_event) => match pointer_event {
+			_ => {
+				let time = pointer_event.time();
+				let pointer_event = pointer_event.into_pointer_event();
+				log::debug!("Got pointer event: {:?}", pointer_event);
+				return None;
+			},
+		},
+		u => {
+			log::debug!("Got unknown libinput event {:?}", u);
+			return None;
+		},
+	})
 }

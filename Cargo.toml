@@ -11,8 +11,8 @@ bindgen = "0.52.0"
 winit = "0.20.0"
 # use_system_lib is not compatible with winit
 #wayland-server = { version = "0.24.1", features = ["use_system_lib"] }
-wayland-server = { version = "0.24.1" }
-wayland-protocols = { version = "0.24.1", features = ["server", "unstable_protocols"] }
+wayland-server = { version = "0.25" }
+wayland-protocols = { version = "0.25", features = ["server", "unstable_protocols"] }
 #wayland-protocols = { version = "0.24.1", features = ["server"] }
 calloop = "0.4.4"
 log = "0.4.8"
@@ -26,17 +26,29 @@ nix = "0.16.1"
 dbus = "0.8.1"
 udev = "0.2.0"
 mio = "0.6.21"
-minifb = "0.15.1"
 ash = "0.29.0"
 drm = "0.3.4"
-gbm = { version = "0.5.0", default-features = false, features = ["drm-support"] }
+#gbm = { version = "0.5.0", default-features = false, features = ["drm-support"] }
 shared_library = "0.1.9"
 shaderc = "0.6.1"
 raw-window-handle = "0.3.3"
 backtrace = "0.3.42"
+nalgebra = "0.19.0"
+image = "0.22.4"
+xkbcommon = "0.4.0"
+tempfile = "3.1.0"
+clap = "2.33.0"
+structopt = "0.3.9"
+#smithay-client-toolkit = "0.7.0"
 
 [patch.crates-io]
-#drm = { path = "/home/intrepidpig/.cargo/registry/src/github.com-1ecc6299db9ec823/drm-0.3.4" }
-dbus = { path = "/home/intrepidpig/dev/wally/extern/dbus-rs/dbus" }
-gbm = { path = "/home/intrepidpig/dev/gbm.rs" }
+#wayland-server = { path = "/home/intrepidpig/dev/wayland-rs/wayland-server" } # Patched for IDE autocomplete
+#wayland-commons = { path = "/home/intrepidpig/dev/wayland-rs/wayland-commons" }
+#wayland-client = { path = "/home/intrepidpig/dev/wayland-rs/wayland-client" }
+#wayland-cursor = { path = "/home/intrepidpig/dev/wayland-rs/wayland-cursor" }
+#smithay-client-toolkit = { path = "/home/intrepidpig/dev/client-toolkit" }
+#wayland-protocols = { path = "/home/intrepidpig/dev/wayland-rs/wayland-protocols" }
+dbus = { path = "/home/intrepidpig/dev/wally/extern/dbus-rs/dbus" } # Patched to increase amount of arguments possible
+#gbm = { path = "/home/intrepidpig/dev/gbm.rs" }
 ash = { path = "/home/intrepidpig/dev/ash/ash" }
+#winit = { path = "/home/intrepidpig/dev/winit" }
