@@ -10,7 +10,7 @@ bindgen = "0.52.0"
 [dependencies]
 winit = "0.20.0"
 # use_system_lib is not compatible with winit
-#wayland-server = { version = "0.24.1", features = ["use_system_lib"] }
+#wayland-server = { version = "0.25", features = ["use_system_lib"] }
 wayland-server = { version = "0.25" }
 wayland-protocols = { version = "0.25", features = ["server", "unstable_protocols"] }
 #wayland-protocols = { version = "0.24.1", features = ["server"] }
@@ -27,12 +27,12 @@ dbus = "0.8.1"
 udev = "0.2.0"
 mio = "0.6.21"
 ash = "0.29.0"
+rk = { path = "../rk", features = ["backtrace", "drm_support"] }
 drm = "0.3.4"
-#gbm = { version = "0.5.0", default-features = false, features = ["drm-support"] }
+gbm = { version = "0.5.0", default-features = false, features = ["drm-support"] }
 shared_library = "0.1.9"
 shaderc = "0.6.1"
 raw-window-handle = "0.3.3"
-backtrace = "0.3.42"
 nalgebra = "0.19.0"
 image = "0.22.4"
 xkbcommon = "0.4.0"
@@ -49,6 +49,7 @@ structopt = "0.3.9"
 #smithay-client-toolkit = { path = "/home/intrepidpig/dev/client-toolkit" }
 #wayland-protocols = { path = "/home/intrepidpig/dev/wayland-rs/wayland-protocols" }
 dbus = { path = "/home/intrepidpig/dev/wally/extern/dbus-rs/dbus" } # Patched to increase amount of arguments possible
-#gbm = { path = "/home/intrepidpig/dev/gbm.rs" }
+gbm = { path = "/home/intrepidpig/dev/gbm.rs" } # Patched for updated wayland-server and possible buffer mapping fixes
+drm = { path = "/home/intrepidpig/dev/drm-rs" }
 ash = { path = "/home/intrepidpig/dev/ash/ash" }
 #winit = { path = "/home/intrepidpig/dev/winit" }

@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ash::{
 	version::DeviceV1_0,
 	vk::{self},
@@ -6,9 +8,9 @@ use ash::{
 
 use crate::renderer;
 
+pub mod drm;
 pub mod vk_display;
 pub mod winit;
-//pub mod drm;
 
 pub trait PresentBackend: Sized {
 	type CreateArgs;
@@ -18,7 +20,9 @@ pub trait PresentBackend: Sized {
 		entry: &Entry,
 		instance: &Instance,
 		physical_device: vk::PhysicalDevice,
+		queue_family_index: u32,
 		device: &Device,
+		queue: vk::Queue,
 		command_pool: vk::CommandPool,
 		device_memory_properties: vk::PhysicalDeviceMemoryProperties,
 		create_args: Self::CreateArgs,
@@ -26,25 +30,11 @@ pub trait PresentBackend: Sized {
 
 	unsafe fn get_current_size(&self) -> (u32, u32);
 
-	unsafe fn present<F>(&mut self, base: &mut renderer::Renderer, f: F) -> Result<(), ()>
-	where
-		F: FnOnce(
-			&renderer::Renderer,
-			vk::CommandBuffer,
-			vk::Fence,
-			vk::RenderPassBeginInfo,
-			&[vk::PipelineStageFlags],
-			&[vk::Semaphore],
-			&[vk::Semaphore],
-		) -> Result<(), ()>;
+	unsafe fn present(&mut self, base: &mut renderer::Renderer) -> Result<(), ()>;
 }
 
 pub struct PresentBackendSetup<P: PresentBackend> {
 	pub(crate) present_backend: P,
-	pub(crate) render_pass: vk::RenderPass,
-	pub(crate) depth_image: vk::Image,
-	pub(crate) depth_image_view: vk::ImageView,
-	pub(crate) depth_memory: vk::DeviceMemory,
 }
 
 pub trait SurfaceCreator: Sized {
@@ -67,7 +57,7 @@ pub trait SurfaceCreator: Sized {
 	unsafe fn get_size(&self, surface_owner: &Self::SurfaceOwner) -> (u32, u32);
 }
 
-const MAX_FRAMES_IN_FLIGHT: usize = 2; // TODO somehow make 2 without uniform buffer sync problems
+const MAX_FRAMES_IN_FLIGHT: usize = 1; // TODO somehow make 2 without uniform buffer sync problems
 
 pub struct GenericPresentBackend<S: SurfaceCreator> {
 	surface_creator: S,
@@ -86,19 +76,22 @@ pub struct GenericPresentBackend<S: SurfaceCreator> {
 	in_flight_fences: Vec<vk::Fence>,
 	images_in_flight: Vec<vk::Fence>,
 	current_frame: usize,
-	framebuffer_resized: bool,
 }
 
 impl<S: SurfaceCreator> GenericPresentBackend<S> {
 	unsafe fn recreate_swapchain(&mut self, base: &mut renderer::Renderer) -> Result<(), ()> {
 		let size = self.surface_creator.get_size(&self.surface_owner);
+		let image_usage = vk::ImageUsageFlags::TRANSFER_DST;
 
 		let swapchain_setup = setup_swapchain(
 			&base.device,
 			base.physical_device,
 			&self.surface_loader,
 			&self.swapchain_loader,
+			base.queue,
+			base.command_pool,
 			self.surface,
+			image_usage,
 			base.device_memory_properties,
 			Some(self.swapchain),
 			size,
@@ -152,7 +145,9 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 		entry: &Entry,
 		instance: &Instance,
 		physical_device: vk::PhysicalDevice,
+		queue_family_index: u32,
 		device: &Device,
+		queue: vk::Queue,
 		command_pool: vk::CommandPool,
 		device_memory_properties: vk::PhysicalDeviceMemoryProperties,
 		create_args: Self::CreateArgs,
@@ -163,9 +158,19 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 		let surface = *surface_owner.as_ref();
 
 		let surface_loader = ash::extensions::khr::Surface::new(entry, instance);
+
+		let physical_device_surface_support = surface_loader
+			.get_physical_device_surface_support(physical_device, queue_family_index, surface)
+			.map_err(|e| log::error!("Failed to get surface present support: {}", e))?;
+		if !physical_device_surface_support {
+			log::error!("Surface does not support presentation");
+			return Err(());
+		}
+
 		let swapchain_loader = ash::extensions::khr::Swapchain::new(instance, device);
 
 		let size = surface_creator.get_size(&surface_owner);
+		let image_usage = vk::ImageUsageFlags::TRANSFER_DST;
 
 		let SwapchainSetup {
 			surface_format,
@@ -182,15 +187,16 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			physical_device,
 			&surface_loader,
 			&swapchain_loader,
+			queue,
+			command_pool,
 			surface,
+			image_usage,
 			device_memory_properties,
 			None,
 			size,
 		)?;
 
 		let command_buffers = renderer::allocate_command_buffers(device, command_pool, framebuffers.len() as u32)?;
-
-		let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
 		let image_available_semaphores = (0..MAX_FRAMES_IN_FLIGHT)
 			.into_iter()
@@ -232,16 +238,11 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			in_flight_fences,
 			images_in_flight,
 			current_frame: 0,
-			framebuffer_resized: false,
 		};
 
 		Ok((
 			PresentBackendSetup {
 				present_backend: winit_present_backend,
-				render_pass,
-				depth_image,
-				depth_image_view,
-				depth_memory,
 			},
 			return_val,
 		))
@@ -251,25 +252,16 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 		self.surface_creator.get_size(&self.surface_owner)
 	}
 
-	unsafe fn present<
-		F: FnOnce(
-			&renderer::Renderer,
-			vk::CommandBuffer,
-			vk::Fence,
-			vk::RenderPassBeginInfo,
-			&[vk::PipelineStageFlags],
-			&[vk::Semaphore],
-			&[vk::Semaphore],
-		) -> Result<(), ()>,
-	>(
-		&mut self,
-		base: &mut renderer::Renderer,
-		f: F,
-	) -> Result<(), ()> {
-		// TODO time this
+	unsafe fn present(&mut self, base: &mut renderer::Renderer) -> Result<(), ()> {
+		let initial_wait_start = Instant::now();
 		base.device
 			.wait_for_fences(&[self.in_flight_fences[self.current_frame]], true, std::u64::MAX)
 			.map_err(|e| log::error!("Error waiting for fence: {}", e))?;
+		println!(
+			"Waited for frame fence for {} ms",
+			initial_wait_start.elapsed().as_secs_f64() * 1000.0
+		);
+		let acquire_image_start = Instant::now();
 		let image_index = match self.swapchain_loader.acquire_next_image(
 			self.swapchain,
 			std::u64::MAX,
@@ -287,13 +279,22 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 				return Err(());
 			}
 		} as usize;
+		println!(
+			"Acquired next swapchain image in {} ms",
+			acquire_image_start.elapsed().as_secs_f64() * 1000.0
+		);
 
 		if self.images_in_flight[image_index] != vk::Fence::null() {
+			let second_wait_start = Instant::now();
 			base.device
 				.wait_for_fences(&[self.images_in_flight[image_index]], true, std::u64::MAX)
 				.map_err(|e| {
 					log::error!("Error while waiting for image in flight fence: {}", e);
 				})?;
+			println!(
+				"Waited for current image fence for {} ms",
+				second_wait_start.elapsed().as_secs_f64() * 1000.0
+			);
 		}
 		self.images_in_flight[image_index] = self.in_flight_fences[self.current_frame];
 
@@ -301,49 +302,42 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			.reset_fences(&[self.in_flight_fences[self.current_frame]])
 			.unwrap();
 
-		let clear_values = [
-			vk::ClearValue {
-				color: vk::ClearColorValue {
-					float32: [0.0, 0.0, 0.0, 1.0],
-				},
-			},
-			vk::ClearValue {
-				depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 },
-			},
-		];
-
 		let size = self.surface_creator.get_size(&self.surface_owner);
 
-		let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-			.render_pass(base.render_pass)
-			.framebuffer(self.framebuffers[image_index])
-			.render_area(vk::Rect2D {
-				offset: vk::Offset2D { x: 0, y: 0 },
-				extent: vk::Extent2D {
-					width: size.0,
-					height: size.1,
-				},
-			})
-			.clear_values(&clear_values);
-
-		/*
-		Synchronization explanation:
-		We would like to render multiple frames at once (in this case 2) for increased performance.
-		*/
-
-		let command_buffer = self.command_buffers[image_index];
 		let wait_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 		let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
 		let signal_semaphores = [self.rendering_complete_semaphores[self.current_frame]];
 
-		f(
-			base,
-			command_buffer,
-			self.in_flight_fences[self.current_frame],
-			render_pass_begin_info.build(),
+		renderer::transition_image_layout(
+			&base.device,
+			base.queue,
+			base.command_pool,
+			self.present_images[image_index],
+			vk::ImageLayout::PRESENT_SRC_KHR,
+			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+		)?;
+		copy_present_image(
+			&base.device,
+			base.queue,
+			self.command_buffers[image_index],
+			base.front_render_target.image,
+			vk::ImageLayout::GENERAL,
+			self.present_images[image_index],
+			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+			size.0,
+			size.1,
 			&wait_mask,
 			&wait_semaphores,
 			&signal_semaphores,
+			self.in_flight_fences[self.current_frame],
+		)?;
+		renderer::transition_image_layout(
+			&base.device,
+			base.queue,
+			base.command_pool,
+			self.present_images[image_index],
+			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+			vk::ImageLayout::PRESENT_SRC_KHR,
 		)?;
 
 		let wait_semaphores = [self.rendering_complete_semaphores[self.current_frame]];
@@ -355,6 +349,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			.swapchains(&swapchains)
 			.image_indices(&image_indices);
 
+		let queue_present_start = Instant::now();
 		match self.swapchain_loader.queue_present(base.queue, &present_info) {
 			Ok(_is_suboptimal) => {}
 			Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -366,6 +361,10 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 				log::error!("Failed to acquire a swapchain image: {}", e);
 			}
 		}
+		println!(
+			"Queue present took {} ms",
+			queue_present_start.elapsed().as_secs_f64() * 1000.0
+		);
 
 		self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -390,7 +389,10 @@ unsafe fn setup_swapchain(
 	physical_device: vk::PhysicalDevice,
 	surface_loader: &ash::extensions::khr::Surface,
 	swapchain_loader: &ash::extensions::khr::Swapchain,
+	queue: vk::Queue,
+	command_pool: vk::CommandPool,
 	surface: vk::SurfaceKHR,
+	image_usage: vk::ImageUsageFlags,
 	device_memory_properties: vk::PhysicalDeviceMemoryProperties,
 	old_swapchain: Option<vk::SwapchainKHR>,
 	size: (u32, u32),
@@ -398,13 +400,13 @@ unsafe fn setup_swapchain(
 	let new_surface_format = get_surface_format(physical_device, &surface_loader, surface)?;
 
 	let new_swapchain = create_swapchain(
-		device,
 		physical_device,
 		&surface_loader,
 		&swapchain_loader,
 		surface,
 		size.0,
 		size.1,
+		image_usage,
 		new_surface_format,
 		old_swapchain,
 	)?;
@@ -412,6 +414,17 @@ unsafe fn setup_swapchain(
 	let new_present_images = swapchain_loader
 		.get_swapchain_images(new_swapchain)
 		.map_err(|e| log::error!("Failed to get swapchain images: {}", e))?;
+
+	for image in &new_present_images {
+		renderer::transition_image_layout(
+			device,
+			queue,
+			command_pool,
+			*image,
+			vk::ImageLayout::UNDEFINED,
+			vk::ImageLayout::PRESENT_SRC_KHR,
+		)?;
+	}
 	let new_present_image_views: Vec<vk::ImageView> = new_present_images
 		.iter()
 		.map(|&image| {
@@ -473,13 +486,13 @@ unsafe fn get_surface_format(
 }
 
 unsafe fn create_swapchain(
-	device: &Device,
 	physical_device: vk::PhysicalDevice,
 	surface_loader: &ash::extensions::khr::Surface,
 	swapchain_loader: &ash::extensions::khr::Swapchain,
 	surface: vk::SurfaceKHR,
 	width: u32,
 	height: u32,
+	image_usage: vk::ImageUsageFlags,
 	surface_format: vk::SurfaceFormatKHR,
 	old_swapchain: Option<vk::SwapchainKHR>,
 ) -> Result<vk::SwapchainKHR, ()> {
@@ -506,7 +519,10 @@ unsafe fn create_swapchain(
 		.iter()
 		.cloned()
 		.find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
-		.unwrap_or(vk::PresentModeKHR::FIFO);
+		.unwrap_or_else(|| {
+			log::warn!("Present mode MAILBOX was unavailable, falling back to FIFO");
+			vk::PresentModeKHR::FIFO
+		});
 
 	let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
 		.surface(surface)
@@ -514,7 +530,7 @@ unsafe fn create_swapchain(
 		.image_color_space(surface_format.color_space)
 		.image_format(surface_format.format)
 		.image_extent(surface_resolution)
-		.image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+		.image_usage(image_usage)
 		.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
 		.pre_transform(pre_transform)
 		.composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
@@ -533,4 +549,64 @@ unsafe fn create_swapchain(
 		.map_err(|e| log::error!("Failed to create swapchain: {}", e))?;
 
 	Ok(swapchain)
+}
+
+pub(crate) unsafe fn copy_present_image(
+	device: &Device,
+	queue: vk::Queue,
+	command_buffer: vk::CommandBuffer,
+	src: vk::Image,
+	src_layout: vk::ImageLayout,
+	dst: vk::Image,
+	dst_layout: vk::ImageLayout,
+	width: u32,
+	height: u32,
+	wait_mask: &[vk::PipelineStageFlags],
+	wait_semaphores: &[vk::Semaphore],
+	signal_semaphores: &[vk::Semaphore],
+	fence: vk::Fence,
+) -> Result<(), ()> {
+	renderer::record_submit_command_buffer(
+		device,
+		queue,
+		command_buffer,
+		fence,
+		wait_mask,
+		wait_semaphores,
+		signal_semaphores,
+		|cmd_buf| {
+			device.cmd_copy_image(
+				cmd_buf,
+				src,
+				src_layout,
+				dst,
+				dst_layout,
+				&[vk::ImageCopy {
+					src_subresource: vk::ImageSubresourceLayers {
+						aspect_mask: vk::ImageAspectFlags::COLOR,
+						mip_level: 0,
+						base_array_layer: 0,
+						layer_count: 1,
+					},
+					src_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+					dst_subresource: vk::ImageSubresourceLayers {
+						aspect_mask: vk::ImageAspectFlags::COLOR,
+						mip_level: 0,
+						base_array_layer: 0,
+						layer_count: 1,
+					},
+					dst_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+					extent: vk::Extent3D {
+						width,
+						height,
+						depth: 1,
+					},
+				}],
+			);
+
+			Ok(())
+		},
+	)?;
+
+	Ok(())
 }

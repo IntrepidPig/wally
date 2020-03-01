@@ -7,6 +7,7 @@ use calloop::EventLoop;
 };*/
 use structopt::StructOpt;
 
+use crate::renderer::present::drm::DrmPresentBackend;
 use crate::{
 	backend::{vulkan::VulkanRenderBackend, winit::WinitInputBackend},
 	renderer::present::{
@@ -28,14 +29,18 @@ pub mod renderer;
 #[derive(StructOpt)]
 #[structopt(name = "wally", about = "A wayland compositor")]
 pub struct Opts {
-	#[structopt(short, long, help = "Select the backend. Can be either \"winit\" or \"vk_display\"")]
+	#[structopt(
+		short,
+		long,
+		help = "Select the backend. Can be either \"winit\", \"drm\", or \"vk_display\""
+	)]
 	backend: String,
 }
 
 fn main() {
 	setup_logging().expect("Failed to setup logging dispatch");
 
-	let mut event_loop = EventLoop::<()>::new().expect("Failed to create event loop");
+	let event_loop = EventLoop::<()>::new().expect("Failed to create event loop");
 	let opts = Opts::from_args();
 	match opts.backend.as_str() {
 		"winit" => {
@@ -43,6 +48,9 @@ fn main() {
 		}
 		"vk_display" => {
 			start_vk_display_compositor(event_loop);
+		}
+		"drm" => {
+			start_drm_compositor(event_loop);
 		}
 		u => {
 			eprintln!("Unknown backend '{}'", u);
@@ -78,15 +86,15 @@ fn start_winit_compositor(event_loop: calloop::EventLoop<()>) {
 		let input_backend = WinitInputBackend::new();
 		let sender = input_backend.get_sender();
 		tx.send(sender);
-		let mut backend = backend::create_backend(input_backend, render_backend);
 		let mut event_loop = calloop::EventLoop::new().expect("Failed to create event loop");
 		let handle = event_loop.handle();
-		let mut compositor = compositor::Compositor::new(backend, handle).expect("Failed to initialize compositor");
+		let mut compositor = compositor::Compositor::new(input_backend, render_backend, handle)
+			.expect("Failed to initialize compositor");
 		compositor.init();
 		compositor.start(&mut event_loop);
 	});
 	let sender = rx.recv().unwrap();
-	WinitInputBackend::start(sender, winit_event_loop);
+	WinitInputBackend::start(sender, winit_event_loop, window);
 }
 
 #[allow(unused)]
@@ -96,9 +104,24 @@ fn start_vk_display_compositor(event_loop: calloop::EventLoop<()>) {
 			.expect("Failed to initialize renderer");
 	let mut event_loop = calloop::EventLoop::new().expect("Failed to create event loop");
 	let render_backend = VulkanRenderBackend::new(renderer, present_backend);
-	let input_backend = backend::libinput::LibinputInputBackend::new(event_loop.handle()).expect("Failed to create libinput backend");
-	let mut backend = backend::create_backend(input_backend, render_backend);
-	let mut compositor = compositor::Compositor::new(backend, event_loop.handle()).expect("Failed to initialize compositor");
+	let input_backend =
+		backend::libinput::LibinputInputBackend::new(event_loop.handle()).expect("Failed to create libinput backend");
+	let mut compositor = compositor::Compositor::new(input_backend, render_backend, event_loop.handle())
+		.expect("Failed to initialize compositor");
+	compositor.init();
+	compositor.start(&mut event_loop);
+}
+
+#[allow(unused)]
+fn start_drm_compositor(event_loop: calloop::EventLoop<()>) {
+	let (mut renderer, mut present_backend, window) =
+		renderer::Renderer::new::<DrmPresentBackend>(()).expect("Failed to initialize renderer");
+	let mut event_loop = calloop::EventLoop::new().expect("Failed to create event loop");
+	let render_backend = VulkanRenderBackend::new(renderer, present_backend);
+	let input_backend =
+		backend::libinput::LibinputInputBackend::new(event_loop.handle()).expect("Failed to create libinput backend");
+	let mut compositor = compositor::Compositor::new(input_backend, render_backend, event_loop.handle())
+		.expect("Failed to initialize compositor");
 	compositor.init();
 	compositor.start(&mut event_loop);
 }

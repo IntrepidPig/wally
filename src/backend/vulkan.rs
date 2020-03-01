@@ -1,17 +1,23 @@
 use std::{
+	fmt,
 	path::Path,
 	sync::{Arc, Mutex},
 };
 
 use ash::{version::DeviceV1_0, vk, Device};
 use wayland_server::protocol::*;
+use thiserror::Error;
 
 use crate::{
 	backend::RenderBackend,
-	compositor::{shm::ShmBuffer, role::{Role}, SurfaceData, SurfaceTree},
-	renderer::{self, present::PresentBackend, Mvp, Object, ObjectHandle, Renderer, TextureData, TextureSource},
+	compositor::{
+		role::Role,
+		shm::ShmBuffer,
+		surface::{SurfaceData, SurfaceTree},
+		xdg::XdgToplevelData,
+	},
+	renderer::{self, present::PresentBackend, Mvp, ObjectHandle, Renderer, TextureData, TextureSource},
 };
-use crate::compositor::xdg::XdgToplevelData;
 
 pub struct VulkanRenderBackend<P: PresentBackend> {
 	renderer: Renderer,
@@ -44,32 +50,51 @@ impl<P: PresentBackend> VulkanRenderBackend<P> {
 	}
 }
 
-impl<P: PresentBackend> VulkanRenderBackend<P> {}
+impl<P: PresentBackend> fmt::Debug for VulkanRenderBackend<P> {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		f.debug_struct("VulkanRenderBackend")
+			.field("renderer", &"<renderer>")
+			.field("present_backend", &"<present_backend>")
+			.field("cursor", &self.cursor)
+			.finish()
+	}
+}
 
+#[derive(Debug)]
 pub struct VulkanSurfaceData {
 	object_handle: ObjectHandle,
 }
 
+#[derive(Debug, Error)]
+pub enum VulkanRenderBackendError {
+	#[error("An unknown error occurred in the vulkan render backend")]
+	Unknown,
+}
+
 impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
-	type Error = ();
+	type Error = VulkanRenderBackendError;
 	type ShmPool = ();
-	type SurfaceData = VulkanSurfaceData;
+	type ObjectHandle = VulkanSurfaceData;
 
 	fn update(&mut self) -> Result<(), Self::Error> {
 		let renderer = &mut self.renderer;
 		let present_backend = &mut self.present_backend;
-		let _ = unsafe {
-			renderer.render(present_backend).map_err(|e| {
+		unsafe {
+			renderer.render_all_objects(present_backend).map_err(|_e| {
 				log::error!("Rendering failed");
-			})
+				VulkanRenderBackendError::Unknown
+			})?;
+			present_backend.present(renderer).map_err(|_e| {
+				log::error!("Presenting failed");
+				VulkanRenderBackendError::Unknown
+			})?;
 		};
 
 		Ok(())
 	}
 
-	fn create_surface(&mut self, surface: wl_surface::WlSurface) -> Result<Self::SurfaceData, Self::Error> {
+	fn create_object(&mut self) -> Result<Self::ObjectHandle, Self::Error> {
 		unsafe {
-			let view_size = self.present_backend.get_current_size();
 			let device = &self.renderer.device.clone();
 			let handle = self
 				.renderer
@@ -78,45 +103,35 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 					object.update_mvp(device, mvp).unwrap();
 				})
 				.unwrap();
-			let surface_data = Self::SurfaceData { object_handle: handle };
+			let surface_data = Self::ObjectHandle { object_handle: handle };
 			Ok(surface_data)
 		}
 	}
 
-	fn destroy_surface(&mut self, surface: wl_surface::WlSurface) -> Result<(), Self::Error> {
-		let surface_data = Arc::clone(
-			surface
-				.as_ref()
-				.user_data()
-				.get::<Arc<Mutex<SurfaceData<Self::SurfaceData>>>>()
-				.unwrap(),
-		);
-		let new_surface_data = Arc::new(Mutex::new(surface_data.lock().unwrap().replace_renderer_data(())));
-		surface.as_ref().user_data().set_threadsafe(move || new_surface_data);
-		let old_surface_data = surface_data.lock().unwrap();
+	fn destroy_object(&mut self, object_handle: Self::ObjectHandle) -> Result<(), Self::Error> {
 		unsafe {
-			self.renderer
-				.delete_object(old_surface_data.renderer_data.object_handle);
+			self.renderer.delete_object(object_handle.object_handle);
 		}
 
 		Ok(())
 	}
 
-	fn render_tree(&mut self, tree: &SurfaceTree) -> Result<(), Self::Error> {
+	fn render_tree(&mut self, tree: &SurfaceTree<Self>) -> Result<(), Self::Error> {
 		unsafe {
+			let device = &self.renderer.device.clone();
+			let queue = self.renderer.queue;
+			let command_pool = self.renderer.command_pool;
+			let device_memory_properties = self.renderer.device_memory_properties;
+			let sampler = self.renderer.sampler;
+			let current_size = self.present_backend.get_current_size();
 			for surface in tree.surfaces_ascending() {
 				let surface_data = surface
 					.as_ref()
 					.user_data()
-					.get::<Arc<Mutex<SurfaceData<Self::SurfaceData>>>>()
+					.get::<Arc<Mutex<SurfaceData<Self::ObjectHandle>>>>()
 					.unwrap();
 				let surface_data_lock = &mut *surface_data.lock().unwrap();
-				let device = &self.renderer.device.clone();
-				let queue = self.renderer.queue;
-				let command_pool = self.renderer.command_pool;
-				let device_memory_properties = self.renderer.device_memory_properties;
-				let sampler = self.renderer.sampler;
-				let object_handle = surface_data_lock.renderer_data.object_handle;
+				let object_handle = surface_data_lock.renderer_data.as_ref().unwrap().object_handle;
 				let object = match self.renderer.get_object_mut(object_handle) {
 					Some(obj) => obj,
 					None => {
@@ -144,14 +159,35 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 					object.draw = true;
 					committed_buffer.0.release();
 				}
-				let current_size = self.present_backend.get_current_size();
 				if let Some(role) = surface_data_lock.role.as_ref() {
 					match role {
 						Role::XdgToplevel(toplevel) => {
-							let toplevel_data: &Arc<Mutex<XdgToplevelData>> = toplevel.as_ref().user_data().get::<Arc<Mutex<XdgToplevelData>>>().unwrap();
+							let toplevel_data: &Arc<Mutex<XdgToplevelData>> = toplevel
+								.as_ref()
+								.user_data()
+								.get::<Arc<Mutex<XdgToplevelData>>>()
+								.unwrap();
 							let toplevel_data_lock = toplevel_data.lock().unwrap();
-							object.update_mvp(device, Mvp::new_surface(toplevel_data_lock.pos, toplevel_data_lock.size, current_size)).unwrap();
-						},
+							object
+								.update_mvp(
+									device,
+									Mvp::new_surface(toplevel_data_lock.pos, toplevel_data_lock.size, current_size),
+								)
+								.unwrap();
+						}
+						Role::Cursor(pointer_state) => {
+							let pointer_state = &mut *pointer_state.lock().unwrap();
+							object
+								.update_mvp(
+									device,
+									Mvp::new_surface(
+										(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
+										(10, 10), // TODO
+										current_size,
+									),
+								)
+								.unwrap();
+						}
 					}
 				} else {
 					// Do not draw the surface if it has no role set
@@ -159,9 +195,32 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 				}
 				surface_data_lock.callback.as_ref().map(|callback| callback.done(42));
 			}
+			let pointer_state = tree.pointer.lock().unwrap();
+			//let default_cursor_object = self.renderer.get_object_mut(pointer_state.default.object_handle).unwrap();
+			let default_cursor_object = self.renderer.get_object_mut(self.cursor).unwrap();
+			if pointer_state.custom_cursor.is_none() {
+				// Draw the default cursor
+				default_cursor_object.draw = true;
+				default_cursor_object
+					.update_mvp(
+						device,
+						Mvp::new_surface(
+							(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
+							(10, 10), // TODO
+							current_size,
+						),
+					)
+					.unwrap();
+			} else {
+				default_cursor_object.draw = false;
+			}
 		}
 
 		Ok(())
+	}
+
+	fn get_size(&self) -> (u32, u32) {
+		unsafe { self.present_backend.get_current_size() }
 	}
 }
 
@@ -215,7 +274,6 @@ impl<'a> renderer::TextureSource for ShmBufferTextureSource<'a> {
 			queue,
 			command_pool,
 			image,
-			vk_format,
 			vk::ImageLayout::UNDEFINED,
 			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 		)?;
@@ -251,7 +309,6 @@ impl<'a> renderer::TextureSource for ShmBufferTextureSource<'a> {
 			queue,
 			command_pool,
 			image,
-			vk_format,
 			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 			vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
 		)?;
@@ -320,7 +377,6 @@ impl<'a> TextureSource for ImagePathTextureSource<'a> {
 			queue,
 			command_pool,
 			image,
-			vk_format,
 			vk::ImageLayout::UNDEFINED,
 			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 		)?;
@@ -356,7 +412,6 @@ impl<'a> TextureSource for ImagePathTextureSource<'a> {
 			queue,
 			command_pool,
 			image,
-			vk_format,
 			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 			vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
 		)?;

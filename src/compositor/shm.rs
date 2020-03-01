@@ -5,7 +5,10 @@ use std::{
 
 use wayland_server::{protocol::*, Filter, Global, Main};
 
-use crate::{backend::Backend, compositor::Compositor};
+use crate::{
+	backend::{InputBackend, RenderBackend},
+	compositor::Compositor,
+};
 use std::sync::MutexGuard;
 
 #[derive(Debug)]
@@ -46,7 +49,7 @@ impl ShmBuffer {
 	}
 }
 
-impl<B: Backend> Compositor<B> {
+impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 	pub(crate) fn setup_shm_global(&mut self) -> Global<wl_shm::WlShm> {
 		let shm_filter = Filter::new(
 			move |(main, _num): (Main<wl_shm::WlShm>, u32), filter, _dispatch_data| {

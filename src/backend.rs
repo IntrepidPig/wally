@@ -1,37 +1,18 @@
 pub use std::os::unix::io::{AsRawFd, RawFd};
 
+use std::fmt;
+
 use calloop::channel::Channel;
 use wayland_server::protocol::*;
 
-use crate::compositor::SurfaceTree;
+use crate::compositor::surface::SurfaceTree;
 
-//pub mod drm;
-pub mod headless;
 pub mod libinput;
 pub mod vulkan;
 pub mod winit;
 
-pub trait Backend {
-	type Error;
-
-	fn update_input_backend(&mut self) -> Result<(), Self::Error>;
-
-	fn get_event_source(&mut self) -> Channel<BackendEvent>;
-
-	type ShmPool;
-	type SurfaceData: Send + 'static;
-
-	fn update_render_backend(&mut self) -> Result<(), Self::Error>;
-
-	fn create_surface(&mut self, surface: wl_surface::WlSurface) -> Result<Self::SurfaceData, Self::Error>;
-
-	fn destroy_surface(&mut self, surface: wl_surface::WlSurface) -> Result<(), Self::Error>;
-
-	fn render_tree(&mut self, tree: &SurfaceTree) -> Result<(), Self::Error>;
-}
-
 pub trait InputBackend {
-	type Error;
+	type Error: fmt::Debug + fmt::Display;
 
 	fn update(&mut self) -> Result<(), Self::Error>;
 
@@ -39,71 +20,27 @@ pub trait InputBackend {
 }
 
 pub trait RenderBackend {
-	type Error;
+	type Error: fmt::Debug + fmt::Display;
 	type ShmPool;
-	type SurfaceData: Send + 'static;
+	type ObjectHandle: Send + fmt::Debug + 'static;
 
 	fn update(&mut self) -> Result<(), Self::Error>;
 
-	fn create_surface(&mut self, surface: wl_surface::WlSurface) -> Result<Self::SurfaceData, Self::Error>;
+	fn create_object(&mut self) -> Result<Self::ObjectHandle, Self::Error>;
 
-	fn destroy_surface(&mut self, surface: wl_surface::WlSurface) -> Result<(), Self::Error>;
+	fn destroy_object(&mut self, object_handle: Self::ObjectHandle) -> Result<(), Self::Error>;
 
-	fn render_tree(&mut self, tree: &SurfaceTree) -> Result<(), Self::Error>;
+	fn render_tree(&mut self, tree: &SurfaceTree<Self>) -> Result<(), Self::Error>;
+
+	fn get_size(&self) -> (u32, u32);
 }
 
 pub struct MergedBackend<I: InputBackend, R: RenderBackend> {
-	input_backend: I,
-	render_backend: R,
+	pub input_backend: I,
+	pub render_backend: R,
 }
 
-pub enum MergedBackendError<I: InputBackend, R: RenderBackend> {
-	InputBackendError(I::Error),
-	RenderBackendError(R::Error),
-}
-
-impl<I: InputBackend, R: RenderBackend> Backend for MergedBackend<I, R> {
-	type Error = MergedBackendError<I, R>;
-
-	fn update_input_backend(&mut self) -> Result<(), Self::Error> {
-		self.input_backend
-			.update()
-			.map_err(MergedBackendError::InputBackendError)
-	}
-
-	fn get_event_source(&mut self) -> Channel<BackendEvent> {
-		self.input_backend.get_event_source()
-	}
-
-	type ShmPool = R::ShmPool;
-	type SurfaceData = R::SurfaceData;
-
-	fn update_render_backend(&mut self) -> Result<(), Self::Error> {
-		self.render_backend
-			.update()
-			.map_err(MergedBackendError::RenderBackendError)
-	}
-
-	fn create_surface(&mut self, surface: wl_surface::WlSurface) -> Result<Self::SurfaceData, Self::Error> {
-		self.render_backend
-			.create_surface(surface)
-			.map_err(MergedBackendError::RenderBackendError)
-	}
-
-	fn destroy_surface(&mut self, surface: wl_surface::WlSurface) -> Result<(), Self::Error> {
-		self.render_backend
-			.destroy_surface(surface)
-			.map_err(MergedBackendError::RenderBackendError)
-	}
-
-	fn render_tree(&mut self, tree: &SurfaceTree) -> Result<(), Self::Error> {
-		self.render_backend
-			.render_tree(tree)
-			.map_err(MergedBackendError::RenderBackendError)
-	}
-}
-
-pub fn create_backend<I: InputBackend, R: RenderBackend>(input_backend: I, render_backend: R) -> MergedBackend<I, R> {
+pub(crate) fn create_backend<I: InputBackend, R: RenderBackend>(input_backend: I, render_backend: R) -> MergedBackend<I, R> {
 	MergedBackend {
 		input_backend,
 		render_backend,
@@ -113,6 +50,8 @@ pub fn create_backend<I: InputBackend, R: RenderBackend>(input_backend: I, rende
 #[derive(Debug, Clone, PartialEq)]
 pub enum BackendEvent {
 	KeyPress(KeyPress),
+	PointerMotion(PointerMotion),
+	PointerButton(PointerButton),
 	StopRequested,
 }
 
@@ -122,4 +61,22 @@ pub struct KeyPress {
 	pub time: u32,
 	pub key: u32,
 	pub state: wl_keyboard::KeyState,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointerMotion {
+	pub serial: u32,
+	pub time: u32,
+	pub dx: f64,
+	pub dx_unaccelerated: f64,
+	pub dy: f64,
+	pub dy_unaccelerated: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PointerButton {
+	pub serial: u32,
+	pub time: u32,
+	pub button: u32,
+	pub state: wl_pointer::ButtonState,
 }

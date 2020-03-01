@@ -1,20 +1,22 @@
 use std::{
 	os::unix::io::{AsRawFd, RawFd},
-	rc::Rc,
 	sync::{Arc, Mutex},
 };
 
 use wayland_server::{protocol::*, Filter, Main};
 use xkbcommon::xkb;
 
-use crate::{backend::Backend, compositor::Compositor};
+use crate::{
+	backend::{InputBackend, RenderBackend},
+	compositor::Compositor,
+};
 
 pub struct KeyboardData {
-	xkb: xkb::Context,
-	keymap: xkb::Keymap,
+	_xkb: xkb::Context,
+	_keymap: xkb::Keymap,
 	keymap_string: String,
 	fd: RawFd,
-	tmp: std::fs::File,
+	_tmp: std::fs::File,
 }
 
 impl KeyboardData {
@@ -29,78 +31,79 @@ impl KeyboardData {
 		tmp.flush().unwrap();
 		let fd = tmp.as_raw_fd();
 		Self {
-			xkb,
-			keymap,
+			_xkb: xkb,
+			_keymap: keymap,
 			keymap_string,
 			fd,
-			tmp,
+			_tmp: tmp,
 		}
 	}
 }
 
-impl<B: Backend> Compositor<B> {
+impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 	pub fn setup_seat_global(&mut self) {
-		let inner = self.inner.lock().unwrap();
-		let client_mgr = Rc::clone(&inner.client_manager);
-		drop(inner);
+		let inner = Arc::clone(&self.inner);
 		let seat_filter = Filter::new(
-			move |(main, _num): (Main<wl_seat::WlSeat>, u32), filter, _dispatch_data| {
+			move |(main, version): (Main<wl_seat::WlSeat>, u32), _filter, _dispatch_data| {
+				let inner = Arc::clone(&inner);
 				let seat = &*main;
-				seat.name(String::from("WallySeat"));
-				seat.capabilities(wl_seat::Capability::Pointer | wl_seat::Capability::Keyboard);
-				let client_mgr = Rc::clone(&client_mgr);
-				main.quick_assign(move |main, request: wl_seat::Request, _dispatch_data| {
-				let client_mgr = Rc::clone(&client_mgr);
-				match request {
-					wl_seat::Request::GetPointer { id } => {
-						log::debug!("Got get_pointer request for wl_seat");
-						let pointer = (*id).clone();
-						let resource = pointer.as_ref().clone();
-						client_mgr.borrow_mut().get_client_resources_mut(resource.client().unwrap()).pointer = Some(pointer);
-						id.quick_assign(|main, request, _dispatch_data| {
-							match request {
-								wl_pointer::Request::SetCursor { serial, surface, hotspot_x, hotspot_y } => {
-									log::debug!("Got pointer request to set cursor: serial {} surface: {:?}, hotspot x {} hotspot y {}", serial, surface.as_ref().map(|s| "Surface"), hotspot_x, hotspot_y);
-								},
-								wl_pointer::Request::Release => {
-									log::debug!("Got wl_pointer release request");
-								},
-								_ => {
-									log::warn!("Got unknown request for wl_pointer");
-								}
-							}
-						})
-					},
-					wl_seat::Request::GetKeyboard { id } => {
-						log::debug!("Got get_keyboard request for wl_seat");
-						let keyboard = (*id).clone();
-						let resource = keyboard.as_ref().clone();
-						let keyboard_data = KeyboardData::new();
-						keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1, keyboard_data.fd, keyboard_data.keymap_string.as_bytes().len() as u32);
-						resource.user_data().set(move || Arc::new(Mutex::new(keyboard_data)));
-						client_mgr.borrow_mut().get_client_resources_mut(resource.client().unwrap()).keyboard = Some(keyboard);
-						id.quick_assign(|main, request, _dispatch_data| {
-							match request {
-								wl_keyboard::Request::Release => {
-									log::debug!("Got keyboard release request");
-								},
-								_ => {
-									log::warn!("Got unknown request for wl_keyboard");
-								},
-							}
-						})
-					},
-					wl_seat::Request::GetTouch { .. } => {
-						log::debug!("Got get_touch request for wl_seat");
-					},
-					wl_seat::Request::Release => {
-						log::debug!("Got release request for wl_seat");
-					},
-					_ => {
-						log::warn!("Got unknown request for wl_seat");
-					},
+				if version >= 2 {
+					seat.name(String::from("WallySeat"));
 				}
-			});
+				seat.capabilities(wl_seat::Capability::Pointer | wl_seat::Capability::Keyboard);
+				main.quick_assign(move |_main, request: wl_seat::Request, _dispatch_data| {
+					let inner = Arc::clone(&inner);
+					let mut inner_lock = inner.lock().unwrap();
+					match request {
+						wl_seat::Request::GetPointer { id } => {
+							log::debug!("Got get_pointer request for wl_seat");
+							let pointer = (*id).clone();
+							let resource = pointer.as_ref().clone();
+							inner_lock.client_manager.get_client_info(resource.client().unwrap()).lock().unwrap().pointers.push(pointer);
+							id.quick_assign(|_main, request, _dispatch_data| {
+								match request {
+									wl_pointer::Request::SetCursor { serial, surface, hotspot_x, hotspot_y } => {
+										log::debug!("Got pointer request to set cursor: serial {} surface: {:?}, hotspot x {} hotspot y {}", serial, surface.as_ref().map(|s| s.as_ref().id()), hotspot_x, hotspot_y);
+									},
+									wl_pointer::Request::Release => {
+										log::debug!("Got wl_pointer release request");
+									},
+									_ => {
+										log::warn!("Got unknown request for wl_pointer");
+									}
+								}
+							})
+						},
+						wl_seat::Request::GetKeyboard { id } => {
+							log::debug!("Got get_keyboard request for wl_seat");
+							let keyboard = (*id).clone();
+							let resource = keyboard.as_ref().clone();
+							let keyboard_data = KeyboardData::new();
+							keyboard.keymap(wl_keyboard::KeymapFormat::XkbV1, keyboard_data.fd, keyboard_data.keymap_string.as_bytes().len() as u32);
+							resource.user_data().set(move || Arc::new(Mutex::new(keyboard_data)));
+							inner_lock.client_manager.get_client_info(resource.client().unwrap()).lock().unwrap().keyboards.push(keyboard);
+							id.quick_assign(|_main, request, _dispatch_data| {
+								match request {
+									wl_keyboard::Request::Release => {
+										log::debug!("Got keyboard release request");
+									},
+									_ => {
+										log::warn!("Got unknown request for wl_keyboard");
+									},
+								}
+							})
+						},
+						wl_seat::Request::GetTouch { .. } => {
+							log::debug!("Got get_touch request for wl_seat");
+						},
+						wl_seat::Request::Release => {
+							log::debug!("Got release request for wl_seat");
+						},
+						_ => {
+							log::warn!("Got unknown request for wl_seat");
+						},
+					}
+				});
 			},
 		);
 		self.display.create_global::<wl_seat::WlSeat, _>(6, seat_filter);

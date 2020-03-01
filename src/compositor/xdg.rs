@@ -1,27 +1,21 @@
-use std::{
-	sync::{Arc, Mutex, Weak},
-};
+use std::sync::{Arc, Mutex};
 
 use wayland_protocols::xdg_shell::server::{xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
-use wayland_server::{protocol::*, Filter, Main};
+use wayland_server::{Filter, Main};
 
 use crate::{
-	backend::Backend,
-	compositor::{role::{Role}, Compositor, SurfaceData}
+	backend::{InputBackend, RenderBackend},
+	compositor::{role::Role, surface::SurfaceData, Compositor},
 };
 
 // This object serves as the Role for a WlSurface, and so it is owned by the WlSurface. As such, it
 // should not contain a strong reference to the WlSurface or a reference cycle would be created.
 #[derive(Debug, Clone)]
-pub struct XdgSurfaceData {
-
-}
+pub struct XdgSurfaceData {}
 
 impl XdgSurfaceData {
 	pub fn new() -> Self {
-		Self {
-		
-		}
+		Self {}
 	}
 }
 
@@ -42,18 +36,18 @@ impl XdgToplevelData {
 	}
 }
 
-impl<B: Backend> Compositor<B> {
+impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 	pub(crate) fn setup_xdg_wm_base_global(&mut self) {
 		let xdg_wm_base_filter = Filter::new(
-			|(main, _num): (Main<xdg_wm_base::XdgWmBase>, u32), filter, _dispatch_data| {
-				main.quick_assign(|main, request: xdg_wm_base::Request, _| match request {
+			|(main, _num): (Main<xdg_wm_base::XdgWmBase>, u32), _filter, _dispatch_data| {
+				main.quick_assign(|_main, request: xdg_wm_base::Request, _| match request {
 					xdg_wm_base::Request::Destroy => {
 						log::debug!("Got xdg_wm_base destroy request");
 					}
 					xdg_wm_base::Request::CreatePositioner { id } => {
 						log::debug!("Got xdg_wm_base create_positioner request");
 						id.quick_assign(
-							|main: Main<xdg_positioner::XdgPositioner>, request: xdg_positioner::Request, _| {
+							|_main: Main<xdg_positioner::XdgPositioner>, request: xdg_positioner::Request, _| {
 								match request {
 									xdg_positioner::Request::Destroy => {
 										log::debug!("Got xdg_positioner destroy request");
@@ -71,16 +65,16 @@ impl<B: Backend> Compositor<B> {
 										);
 									}
 									xdg_positioner::Request::SetAnchor { anchor } => {
-										log::debug!("Got xdg_positioner set anchor request");
+										log::debug!("Got xdg_positioner set anchor request: {:?}", anchor);
 									}
 									xdg_positioner::Request::SetGravity { gravity } => {
-										log::debug!("Got xdg_positioner set gravity request");
+										log::debug!("Got xdg_positioner set gravity request: {:?}", gravity);
 									}
 									xdg_positioner::Request::SetConstraintAdjustment { constraint_adjustment } => {
-										log::debug!("Got xdg_positioner set constraint adjustment request");
+										log::debug!("Got xdg_positioner set constraint adjustment request: {:?}", constraint_adjustment);
 									}
 									xdg_positioner::Request::SetOffset { x, y } => {
-										log::debug!("Got xdg_positioner set offset request");
+										log::debug!("Got xdg_positioner set offset request: ({}, {})", x, y);
 									}
 									_ => {
 										log::warn!("Got unknown request for xdg_positioner");
@@ -94,10 +88,13 @@ impl<B: Backend> Compositor<B> {
 						let xdg_surface_data = Arc::new(Mutex::new(XdgSurfaceData::new()));
 						let xdg_surface_data_clone = Arc::new(Mutex::new(XdgSurfaceData::new()));
 						let xdg_surface = (*id).clone();
-						xdg_surface.as_ref().user_data().set_threadsafe(move || xdg_surface_data_clone);
+						xdg_surface
+							.as_ref()
+							.user_data()
+							.set_threadsafe(move || xdg_surface_data_clone);
 						(*id).configure(42);
 						id.quick_assign(
-							move |main: Main<xdg_surface::XdgSurface>, request: xdg_surface::Request, _| {
+							move |_main: Main<xdg_surface::XdgSurface>, request: xdg_surface::Request, _| {
 								let xdg_surface_data = Arc::clone(&xdg_surface_data);
 								let surface = surface.clone();
 								match request {
@@ -108,21 +105,32 @@ impl<B: Backend> Compositor<B> {
 										log::debug!("Got xdg_surface get_top_level request");
 										let toplevel = (*id).clone();
 										let toplevel_data = XdgToplevelData::new();
-										toplevel.configure(toplevel_data.size.0 as i32, toplevel_data.size.1 as i32, Vec::new());
+										toplevel.configure(
+											toplevel_data.size.0 as i32,
+											toplevel_data.size.1 as i32,
+											Vec::new(),
+										);
 										let toplevel_data = Arc::new(Mutex::new(toplevel_data));
 										let toplevel_data_clone = Arc::clone(&toplevel_data);
-										toplevel.as_ref().user_data().set_threadsafe(move || toplevel_data_clone);
-										let surface_data: &Arc<Mutex<SurfaceData<B::SurfaceData>>> = surface.as_ref().user_data().get::<Arc<Mutex<SurfaceData<B::SurfaceData>>>>().unwrap();
+										toplevel
+											.as_ref()
+											.user_data()
+											.set_threadsafe(move || toplevel_data_clone);
+										let surface_data: &Arc<Mutex<SurfaceData<R::ObjectHandle>>> = surface
+											.as_ref()
+											.user_data()
+											.get::<Arc<Mutex<SurfaceData<R::ObjectHandle>>>>()
+											.unwrap();
 										let mut surface_data_lock = surface_data.lock().unwrap();
 										surface_data_lock.role = Some(Role::XdgToplevel(toplevel.clone()));
-										id.quick_assign(move |main, request: xdg_toplevel::Request, _| {
+										id.quick_assign(move |_main, request: xdg_toplevel::Request, _| {
 											let toplevel_data = Arc::clone(&toplevel_data);
 											match request {
 												xdg_toplevel::Request::Destroy => {
 													log::debug!("Got xdg_toplevel destroy request");
 												}
 												xdg_toplevel::Request::SetParent { parent } => {
-													log::debug!("Got xdg_toplevel set_parent request");
+													log::debug!("Got xdg_toplevel set_parent request on {:?}", parent.map(|parent| parent.as_ref().id()));
 												}
 												xdg_toplevel::Request::SetTitle { title } => {
 													log::debug!("Got xdg_toplevel set_title request");
@@ -130,21 +138,21 @@ impl<B: Backend> Compositor<B> {
 													toplevel_data_lock.title = Some(title);
 												}
 												xdg_toplevel::Request::SetAppId { app_id } => {
-													log::debug!("Got xdg_toplevel set_app_id request");
+													log::debug!("Got xdg_toplevel set_app_id request: '{}'", app_id);
 												}
-												xdg_toplevel::Request::ShowWindowMenu { seat, serial, x, y } => {
+												xdg_toplevel::Request::ShowWindowMenu { .. } => {
 													log::debug!("Got xdg_toplevel show_window_meny request");
 												}
-												xdg_toplevel::Request::Move { seat, serial } => {
+												xdg_toplevel::Request::Move { .. } => {
 													log::debug!("Got xdg_toplevel move request");
 												}
-												xdg_toplevel::Request::Resize { seat, serial, edges } => {
+												xdg_toplevel::Request::Resize { .. } => {
 													log::debug!("Got xdg_toplevel resize request");
 												}
-												xdg_toplevel::Request::SetMaxSize { width, height } => {
+												xdg_toplevel::Request::SetMaxSize { .. } => {
 													log::debug!("Got xdg_toplevel set_max_size request");
 												}
-												xdg_toplevel::Request::SetMinSize { width, height } => {
+												xdg_toplevel::Request::SetMinSize { .. } => {
 													log::debug!("Got xdg_toplevel set_min_size request");
 												}
 												xdg_toplevel::Request::SetMaximized => {
@@ -153,7 +161,7 @@ impl<B: Backend> Compositor<B> {
 												xdg_toplevel::Request::UnsetMaximized => {
 													log::debug!("Got xdg_toplevel unset_maximized request");
 												}
-												xdg_toplevel::Request::SetFullscreen { output } => {
+												xdg_toplevel::Request::SetFullscreen { .. } => {
 													log::debug!("Got xdg_toplevel set_fullscreen request");
 												}
 												xdg_toplevel::Request::UnsetFullscreen => {
@@ -168,13 +176,13 @@ impl<B: Backend> Compositor<B> {
 											}
 										});
 									}
-									xdg_surface::Request::GetPopup { id, parent, positioner } => {
+									xdg_surface::Request::GetPopup { .. } => {
 										log::debug!("Got xdg_surface get_popup request");
 									}
-									xdg_surface::Request::SetWindowGeometry { x, y, width, height } => {
+									xdg_surface::Request::SetWindowGeometry { .. } => {
 										log::debug!("Got xdg_surface set_window_geometry request");
 									}
-									xdg_surface::Request::AckConfigure { serial } => {
+									xdg_surface::Request::AckConfigure { .. } => {
 										log::debug!("Got xdg_surface ack_configure request");
 									}
 									_ => log::warn!("Got unknown request for xdg_surface"),
@@ -182,8 +190,8 @@ impl<B: Backend> Compositor<B> {
 							},
 						);
 					}
-					xdg_wm_base::Request::Pong { serial: u32 } => {
-						log::debug!("Got xdg_wm_base pong request");
+					xdg_wm_base::Request::Pong { serial } => {
+						log::debug!("Got xdg_wm_base pong request with serial: {}", serial);
 					}
 					_ => {
 						log::warn!("Got unknown request for xdg_wm_base");

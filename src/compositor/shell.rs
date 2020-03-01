@@ -1,8 +1,11 @@
 use wayland_server::{protocol::*, Filter, Main};
 
-use crate::{backend::Backend, compositor::Compositor};
+use crate::{
+	backend::{InputBackend, RenderBackend},
+	compositor::Compositor,
+};
 
-impl<B: Backend> Compositor<B> {
+impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 	pub(crate) fn setup_wl_shell_global(&mut self) {
 		let wl_shell_filter = Filter::new(|(main, _num): (Main<wl_shell::WlShell>, u32), filter, _dispatch_data| {
 			main.quick_assign(|main, request: wl_shell::Request, _| match request {
