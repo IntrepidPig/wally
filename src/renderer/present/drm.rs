@@ -91,20 +91,36 @@ impl PresentBackend for DrmPresentBackend {
 
 	unsafe fn present(&mut self, base: &mut renderer::Renderer) -> Result<(), ()> {
 		let size = self.get_current_size();
+		renderer::transition_image_layout(
+			&base.device,
+			base.queue,
+			base.command_pool,
+			base.front_render_target.image,
+			vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+		)?;
 		renderer::present::copy_present_image(
 			&base.device,
 			base.queue,
 			self.command_buffer,
 			base.front_render_target.image,
-			vk::ImageLayout::GENERAL,
+			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 			self.present_image,
-			vk::ImageLayout::GENERAL,
+			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 			size.0,
 			size.1,
 			&[],
 			&[],
 			&[],
 			self.present_fence,
+		)?;
+		renderer::transition_image_layout(
+			&base.device,
+			base.queue,
+			base.command_pool,
+			base.front_render_target.image,
+			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+			vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
 		)?;
 		base.device
 			.wait_for_fences(&[self.present_fence], true, std::u64::MAX)

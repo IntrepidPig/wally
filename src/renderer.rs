@@ -885,16 +885,16 @@ unsafe fn import_fb_image(
 		vk::ImageTiling::LINEAR,
 		vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
 	)?;
+	let image_memory = import_fd_memory(device, device_memory_properties, fd, width as u64 * height as u64 * 4)?;
+	bind_image_memory(device, image, image_memory)?;
 	transition_image_layout(
 		device,
 		queue,
 		command_pool,
 		image,
 		vk::ImageLayout::UNDEFINED,
-		vk::ImageLayout::GENERAL,
+		vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 	)?;
-	let image_memory = import_fd_memory(device, device_memory_properties, fd, width as u64 * height as u64 * 4)?;
-	bind_image_memory(device, image, image_memory)?;
 	let image_view = create_image_view(device, image, format, vk::ImageAspectFlags::COLOR)?;
 
 	Ok((image, image_view, image_memory))
@@ -956,7 +956,7 @@ pub(crate) unsafe fn transition_image_layout(
 			vk::AccessFlags::empty(),
 			vk::AccessFlags::COLOR_ATTACHMENT_READ,
 			vk::PipelineStageFlags::ALL_GRAPHICS,
-			vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+			vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
 		),
 		(vk::ImageLayout::GENERAL, vk::ImageLayout::PRESENT_SRC_KHR) => (
 			vk::AccessFlags::empty(),
@@ -969,6 +969,18 @@ pub(crate) unsafe fn transition_image_layout(
 			vk::AccessFlags::TRANSFER_WRITE | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
 			vk::PipelineStageFlags::empty(),
 			vk::PipelineStageFlags::empty(),
+		),
+		(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, vk::ImageLayout::TRANSFER_SRC_OPTIMAL) => (
+			vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+			vk::AccessFlags::TRANSFER_READ,
+			vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+			vk::PipelineStageFlags::TRANSFER,
+		),
+		(vk::ImageLayout::TRANSFER_SRC_OPTIMAL, vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) => (
+			vk::AccessFlags::TRANSFER_READ,
+			vk::AccessFlags::empty(),
+			vk::PipelineStageFlags::TRANSFER,
+			vk::PipelineStageFlags::BOTTOM_OF_PIPE,
 		),
 		_ => {
 			log::error!(
@@ -1279,7 +1291,7 @@ pub(crate) unsafe fn create_render_pass(device: &Device, format: vk::Format) -> 
 			stencil_load_op: vk::AttachmentLoadOp::DONT_CARE,
 			stencil_store_op: vk::AttachmentStoreOp::DONT_CARE,
 			initial_layout: vk::ImageLayout::UNDEFINED,
-			final_layout: vk::ImageLayout::GENERAL,
+			final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
 		},
 		vk::AttachmentDescription {
 			flags: vk::AttachmentDescriptionFlags::empty(),
@@ -1788,9 +1800,12 @@ pub(crate) unsafe fn record_submit_one_time_commands<F: FnOnce(vk::CommandBuffer
 	device
 		.queue_submit(queue, &[submit_info.build()], fence)
 		.map_err(|e| log::error!("Failed to submit one time command buffer: {}", e))?;
-	device
-		.wait_for_fences(&[fence], true, std::u64::MAX)
-		.map_err(|e| log::error!("Error while waiting for fences after submitting one time command buffer: {}", e))?;
+	device.wait_for_fences(&[fence], true, std::u64::MAX).map_err(|e| {
+		log::error!(
+			"Error while waiting for fences after submitting one time command buffer: {}",
+			e
+		)
+	})?;
 
 	Ok(())
 }

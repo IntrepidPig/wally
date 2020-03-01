@@ -71,7 +71,10 @@ impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 										log::debug!("Got xdg_positioner set gravity request: {:?}", gravity);
 									}
 									xdg_positioner::Request::SetConstraintAdjustment { constraint_adjustment } => {
-										log::debug!("Got xdg_positioner set constraint adjustment request: {:?}", constraint_adjustment);
+										log::debug!(
+											"Got xdg_positioner set constraint adjustment request: {:?}",
+											constraint_adjustment
+										);
 									}
 									xdg_positioner::Request::SetOffset { x, y } => {
 										log::debug!("Got xdg_positioner set offset request: ({}, {})", x, y);
@@ -130,7 +133,10 @@ impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 													log::debug!("Got xdg_toplevel destroy request");
 												}
 												xdg_toplevel::Request::SetParent { parent } => {
-													log::debug!("Got xdg_toplevel set_parent request on {:?}", parent.map(|parent| parent.as_ref().id()));
+													log::debug!(
+														"Got xdg_toplevel set_parent request on {:?}",
+														parent.map(|parent| parent.as_ref().id())
+													);
 												}
 												xdg_toplevel::Request::SetTitle { title } => {
 													log::debug!("Got xdg_toplevel set_title request");

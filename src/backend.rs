@@ -40,7 +40,10 @@ pub struct MergedBackend<I: InputBackend, R: RenderBackend> {
 	pub render_backend: R,
 }
 
-pub(crate) fn create_backend<I: InputBackend, R: RenderBackend>(input_backend: I, render_backend: R) -> MergedBackend<I, R> {
+pub(crate) fn create_backend<I: InputBackend, R: RenderBackend>(
+	input_backend: I,
+	render_backend: R,
+) -> MergedBackend<I, R> {
 	MergedBackend {
 		input_backend,
 		render_backend,

@@ -3,6 +3,7 @@ use std::{
 	fs::{self},
 	io::{self},
 	marker::PhantomData,
+	sync::atomic::{AtomicBool, AtomicU32, Ordering},
 	time::{Duration, Instant},
 };
 
@@ -18,9 +19,7 @@ use wayland_server::{protocol::*, Client, Display, Filter, Main};
 use crate::{
 	backend::{BackendEvent, InputBackend, MergedBackend, RenderBackend},
 	compositor::prelude::*,
-	compositor::{
-		surface::{SurfaceData, SurfaceTree},
-	},
+	compositor::surface::{SurfaceData, SurfaceTree},
 };
 
 pub mod client;
@@ -52,10 +51,20 @@ pub mod prelude {
 
 pub type Synced<T> = Arc<Mutex<T>>;
 
-static INPUT_SERIAL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+pub(crate) static INPUT_SERIAL: AtomicU32 = AtomicU32::new(1);
+pub(crate) static PROFILE_OUTPUT: AtomicBool = AtomicBool::new(false);
+pub(crate) static DEBUG_OUTPUT: AtomicBool = AtomicBool::new(false);
 
 pub fn get_input_serial() -> u32 {
-	INPUT_SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+	INPUT_SERIAL.fetch_add(1, Ordering::Relaxed)
+}
+
+pub fn profile_output() -> bool {
+	PROFILE_OUTPUT.load(Ordering::Relaxed)
+}
+
+pub fn debug_output() -> bool {
+	DEBUG_OUTPUT.load(Ordering::Relaxed)
 }
 
 pub struct Compositor<I: InputBackend, R: RenderBackend> {
@@ -286,20 +295,24 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 					.update()
 					.map_err(|_e| log::error!("Error updating the input backend"))
 					.unwrap();
-				println!(
-					"Updated input backend in {} ms",
-					input_update_start.elapsed().as_secs_f64() * 1000.0
-				);
+				if profile_output() {
+					log::debug!(
+						"Updated input backend in {} ms",
+						input_update_start.elapsed().as_secs_f64() * 1000.0
+					);
+				}
 				let render_update_start = Instant::now();
 				backend
 					.render_backend
 					.update()
 					.map_err(|_e| log::error!("Error updating the render backend"))
 					.unwrap();
-				println!(
-					"Updated render backend in {} ms",
-					render_update_start.elapsed().as_secs_f64() * 1000.0
-				);
+				if profile_output() {
+					log::debug!(
+						"Updated render backend in {} ms",
+						render_update_start.elapsed().as_secs_f64() * 1000.0
+					);
+				}
 				let inner = &mut *inner;
 				let render_tree_start = Instant::now();
 				let surface_tree = &inner.surface_tree;
@@ -308,10 +321,12 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 					.render_tree(surface_tree)
 					.map_err(|_e| log::error!("Error rendering surface tree"))
 					.unwrap();
-				println!(
-					"Rendered surface tree in {} ms",
-					render_tree_start.elapsed().as_secs_f64() * 1000.0
-				);
+				if profile_output() {
+					log::debug!(
+						"Rendered surface tree in {} ms",
+						render_tree_start.elapsed().as_secs_f64() * 1000.0
+					);
+				}
 			}
 			// TODO change timeout to something that syncs with rendering somehow. The timeout should be the time until
 			// the next frame should start rendering.
@@ -322,16 +337,24 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 					log::error!("An error occurred in the event loop: {}", e);
 				}
 			}
-			println!(
-				"Dispatched events in {} ms",
-				dispatch_start.elapsed().as_secs_f64() * 1000.0
-			);
+			if profile_output() {
+				log::debug!(
+					"Dispatched events in {} ms",
+					dispatch_start.elapsed().as_secs_f64() * 1000.0
+				);
+			}
 			let flush_start = Instant::now();
 			self.display.flush_clients(&mut ());
-			println!("Flushed clients in {} ms", flush_start.elapsed().as_secs_f64() * 1000.0);
-			//self.print_debug_info();
+			if profile_output() {
+				log::debug!("Flushed clients in {} ms", flush_start.elapsed().as_secs_f64() * 1000.0);
+			}
+			if debug_output() {
+				self.print_debug_info();
+			}
 			let end = start.elapsed();
-			println!("Ran frame in {} ms", end.as_secs_f64() * 1000.0);
+			if profile_output() {
+				log::debug!("Ran frame in {} ms", end.as_secs_f64() * 1000.0);
+			}
 		}
 	}
 

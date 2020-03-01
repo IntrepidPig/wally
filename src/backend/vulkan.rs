@@ -5,8 +5,8 @@ use std::{
 };
 
 use ash::{version::DeviceV1_0, vk, Device};
-use wayland_server::protocol::*;
 use thiserror::Error;
+use wayland_server::protocol::*;
 
 use crate::{
 	backend::RenderBackend,

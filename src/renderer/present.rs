@@ -81,7 +81,7 @@ pub struct GenericPresentBackend<S: SurfaceCreator> {
 impl<S: SurfaceCreator> GenericPresentBackend<S> {
 	unsafe fn recreate_swapchain(&mut self, base: &mut renderer::Renderer) -> Result<(), ()> {
 		let size = self.surface_creator.get_size(&self.surface_owner);
-		let image_usage = vk::ImageUsageFlags::TRANSFER_DST;
+		let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST;
 
 		let swapchain_setup = setup_swapchain(
 			&base.device,
@@ -170,7 +170,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 		let swapchain_loader = ash::extensions::khr::Swapchain::new(instance, device);
 
 		let size = surface_creator.get_size(&surface_owner);
-		let image_usage = vk::ImageUsageFlags::TRANSFER_DST;
+		let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST;
 
 		let SwapchainSetup {
 			surface_format,
@@ -257,10 +257,12 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 		base.device
 			.wait_for_fences(&[self.in_flight_fences[self.current_frame]], true, std::u64::MAX)
 			.map_err(|e| log::error!("Error waiting for fence: {}", e))?;
-		println!(
-			"Waited for frame fence for {} ms",
-			initial_wait_start.elapsed().as_secs_f64() * 1000.0
-		);
+		if crate::compositor::profile_output() {
+			log::debug!(
+				"Waited for frame fence for {} ms",
+				initial_wait_start.elapsed().as_secs_f64() * 1000.0
+			);
+		}
 		let acquire_image_start = Instant::now();
 		let image_index = match self.swapchain_loader.acquire_next_image(
 			self.swapchain,
@@ -279,10 +281,12 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 				return Err(());
 			}
 		} as usize;
-		println!(
-			"Acquired next swapchain image in {} ms",
-			acquire_image_start.elapsed().as_secs_f64() * 1000.0
-		);
+		if crate::compositor::profile_output() {
+			log::debug!(
+				"Acquired next swapchain image in {} ms",
+				acquire_image_start.elapsed().as_secs_f64() * 1000.0
+			);
+		}
 
 		if self.images_in_flight[image_index] != vk::Fence::null() {
 			let second_wait_start = Instant::now();
@@ -291,10 +295,12 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 				.map_err(|e| {
 					log::error!("Error while waiting for image in flight fence: {}", e);
 				})?;
-			println!(
-				"Waited for current image fence for {} ms",
-				second_wait_start.elapsed().as_secs_f64() * 1000.0
-			);
+			if crate::compositor::profile_output() {
+				log::debug!(
+					"Waited for current image fence for {} ms",
+					second_wait_start.elapsed().as_secs_f64() * 1000.0
+				);
+			}
 		}
 		self.images_in_flight[image_index] = self.in_flight_fences[self.current_frame];
 
@@ -307,7 +313,15 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 		let wait_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 		let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
 		let signal_semaphores = [self.rendering_complete_semaphores[self.current_frame]];
-
+		
+		renderer::transition_image_layout(
+			&base.device,
+			base.queue,
+			base.command_pool,
+			base.front_render_target.image,
+			vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+		)?;
 		renderer::transition_image_layout(
 			&base.device,
 			base.queue,
@@ -321,7 +335,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			base.queue,
 			self.command_buffers[image_index],
 			base.front_render_target.image,
-			vk::ImageLayout::GENERAL,
+			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 			self.present_images[image_index],
 			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 			size.0,
@@ -330,6 +344,14 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			&wait_semaphores,
 			&signal_semaphores,
 			self.in_flight_fences[self.current_frame],
+		)?;
+		renderer::transition_image_layout(
+			&base.device,
+			base.queue,
+			base.command_pool,
+			base.front_render_target.image,
+			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+			vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
 		)?;
 		renderer::transition_image_layout(
 			&base.device,
@@ -361,10 +383,12 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 				log::error!("Failed to acquire a swapchain image: {}", e);
 			}
 		}
-		println!(
-			"Queue present took {} ms",
-			queue_present_start.elapsed().as_secs_f64() * 1000.0
-		);
+		if crate::compositor::profile_output() {
+			log::debug!(
+				"Queue present took {} ms",
+				queue_present_start.elapsed().as_secs_f64() * 1000.0
+			);
+		}
 
 		self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 

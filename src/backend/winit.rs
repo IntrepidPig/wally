@@ -1,12 +1,12 @@
 use std::time::Instant;
 
 use calloop::channel::{self, Channel, Sender};
+use thiserror::Error;
 use wayland_server::protocol::*;
 use winit::{
 	event::{ElementState, Event as WinitEvent, WindowEvent},
 	event_loop::{ControlFlow, EventLoop},
 };
-use thiserror::Error;
 
 use crate::backend::{BackendEvent, InputBackend, KeyPress, PointerMotion};
 use std::sync::Arc;
@@ -42,11 +42,12 @@ impl WinitInputBackend {
 					}
 					WinitEvent::WindowEvent {
 						window_id: _window_id,
-						event: WindowEvent::KeyboardInput {
-							device_id: _device_id,
-							input,
-							is_synthetic: _is_synthetic,
-						},
+						event:
+							WindowEvent::KeyboardInput {
+								device_id: _device_id,
+								input,
+								is_synthetic: _is_synthetic,
+							},
 					} => {
 						if input.virtual_keycode == Some(winit::event::VirtualKeyCode::LControl) {
 							if input.state == ElementState::Pressed {
@@ -59,11 +60,15 @@ impl WinitInputBackend {
 							if input.state == ElementState::Released && ctrl_pressed {
 								if pointer_grabbed {
 									pointer_grabbed = false;
-									let _ = window.set_cursor_grab(false).map_err(|e| log::error!("Failed to release cursor: {}", e));
+									let _ = window
+										.set_cursor_grab(false)
+										.map_err(|e| log::error!("Failed to release cursor: {}", e));
 									window.set_cursor_visible(true);
 								} else {
 									pointer_grabbed = true;
-									let _ = window.set_cursor_grab(true).map_err(|e| log::error!("Failed to grab cursor: {}", e));
+									let _ = window
+										.set_cursor_grab(true)
+										.map_err(|e| log::error!("Failed to grab cursor: {}", e));
 									window.set_cursor_visible(false);
 								}
 							}

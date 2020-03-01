@@ -35,6 +35,10 @@ pub struct Opts {
 		help = "Select the backend. Can be either \"winit\", \"drm\", or \"vk_display\""
 	)]
 	backend: String,
+	#[structopt(short, long, help = "Enable profiling output")]
+	profile: bool,
+	#[structopt(short, long, help = "Enable debugging output")]
+	debug: bool,
 }
 
 fn main() {
@@ -42,6 +46,12 @@ fn main() {
 
 	let event_loop = EventLoop::<()>::new().expect("Failed to create event loop");
 	let opts = Opts::from_args();
+	if opts.profile {
+		compositor::PROFILE_OUTPUT.store(true, std::sync::atomic::Ordering::Relaxed);
+	}
+	if opts.debug {
+		compositor::DEBUG_OUTPUT.store(true, std::sync::atomic::Ordering::Relaxed);
+	}
 	match opts.backend.as_str() {
 		"winit" => {
 			start_winit_compositor(event_loop);

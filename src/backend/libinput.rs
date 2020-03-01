@@ -3,7 +3,7 @@ use calloop::{
 	generic::{EventedRawFd, Generic},
 	LoopHandle, Source,
 };
-use thiserror::{Error};
+use thiserror::Error;
 
 use crate::backend::{PointerButton, PointerMotion};
 use crate::{
@@ -94,7 +94,10 @@ impl InputBackend for LibinputInputBackend {
 		while let Some(event) = self.libinput.next() {
 			println!("Got libinput event {:?}", event);
 			if let Some(backend_event) = libinput_event_to_backend_event(event) {
-				let _ = self.event_sender.send(backend_event).map_err(|e| log::error!("Failed to send event to backend: {}", e));
+				let _ = self
+					.event_sender
+					.send(backend_event)
+					.map_err(|e| log::error!("Failed to send event to backend: {}", e));
 			}
 		}
 
