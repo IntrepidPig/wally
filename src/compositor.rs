@@ -644,7 +644,7 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 			|(main, _num): (Main<wl_data_device_manager::WlDataDeviceManager>, u32), _filter, _dispatch_data| {
 				main.quick_assign(
 					|_main, request: wl_data_device_manager::Request, _dispatch_data| match request {
-						wl_data_device_manager::Request::CreateDataSource { id } => {
+						wl_data_device_manager::Request::CreateDataSource { id: _ } => {
 							log::debug!("Got create_data_source request for wl_data_device_manager");
 						}
 						wl_data_device_manager::Request::GetDataDevice { id: _, seat: _ } => {

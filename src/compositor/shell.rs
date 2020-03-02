@@ -7,9 +7,9 @@ use crate::{
 
 impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 	pub(crate) fn setup_wl_shell_global(&mut self) {
-		let wl_shell_filter = Filter::new(|(main, _num): (Main<wl_shell::WlShell>, u32), filter, _dispatch_data| {
-			main.quick_assign(|main, request: wl_shell::Request, _| match request {
-				wl_shell::Request::GetShellSurface { id, surface } => {
+		let wl_shell_filter = Filter::new(|(main, _num): (Main<wl_shell::WlShell>, u32), _filter, _dispatch_data| {
+			main.quick_assign(|_main, request: wl_shell::Request, _| match request {
+				wl_shell::Request::GetShellSurface { .. } => {
 					log::debug!("Got get_shell_surface request for wl_shell");
 				}
 				_ => {

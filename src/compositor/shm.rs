@@ -52,11 +52,11 @@ impl ShmBuffer {
 impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 	pub(crate) fn setup_shm_global(&mut self) -> Global<wl_shm::WlShm> {
 		let shm_filter = Filter::new(
-			move |(main, _num): (Main<wl_shm::WlShm>, u32), filter, _dispatch_data| {
+			move |(main, _num): (Main<wl_shm::WlShm>, u32), _filter, _dispatch_data| {
 				let shm_interface = &*main;
 				shm_interface.format(wl_shm::Format::Argb8888);
 				shm_interface.format(wl_shm::Format::Xrgb8888);
-				main.quick_assign(move |main, request, _dispatch_data| {
+				main.quick_assign(move |_main, request, _dispatch_data| {
 				match request {
 					wl_shm::Request::CreatePool { id, fd, size } => {
 						log::debug!("Got request to create shm pool with fd {} and size {}", fd, size);
@@ -77,7 +77,7 @@ impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 						}));
 						let shm_pool_clone = Arc::clone(&shm_pool);
 						id.as_ref().user_data().set_threadsafe(move || shm_pool_clone);
-						id.quick_assign(move |main: Main<wl_shm_pool::WlShmPool>, request: wl_shm_pool::Request, _| {
+						id.quick_assign(move |_main: Main<wl_shm_pool::WlShmPool>, request: wl_shm_pool::Request, _| {
 							let shm_pool = Arc::clone(&shm_pool);
 							match request {
 								wl_shm_pool::Request::CreateBuffer { id, offset, width, height, stride, format } => {
@@ -92,7 +92,7 @@ impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 										format,
 									}));
 									id.as_ref().user_data().set_threadsafe(|| Arc::clone(&shm_buffer));
-									id.quick_assign(|main: Main<wl_buffer::WlBuffer>, request: wl_buffer::Request, _dispatch_data| {
+									id.quick_assign(|_main: Main<wl_buffer::WlBuffer>, request: wl_buffer::Request, _dispatch_data| {
 										match request {
 											wl_buffer::Request::Destroy => {
 												log::debug!("Got request to destroy buffer");

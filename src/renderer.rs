@@ -1,4 +1,4 @@
-use std::{ffi::CStr, os::raw::c_char, os::unix::io::RawFd};
+use std::{ffi::CStr, os::raw::{c_void, c_char}, os::unix::io::RawFd};
 
 use ash::{
 	version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
@@ -41,6 +41,7 @@ pub struct RenderTarget {
 	image_view: vk::ImageView,
 	image_memory: vk::DeviceMemory,
 	framebuffer: vk::Framebuffer,
+	render_complete_semaphore: vk::Semaphore,
 }
 
 pub struct Renderer {
@@ -241,8 +242,18 @@ impl Renderer {
 			Ok((renderer, present_backend, return_val))
 		}
 	}
+	
+	pub unsafe fn begin_render_pass<P: PresentBackend>(&mut self, present_backend: &mut P) -> Result<(), ()> {
+		self.device
+			.reset_command_buffer(self.render_command_buffer, vk::CommandBufferResetFlags::RELEASE_RESOURCES)
+			.map_err(|e| log::error!("Failed to reset command buffer: {}", e))?;
 
-	pub unsafe fn render_all_objects<P: PresentBackend>(&mut self, present_backend: &mut P) -> Result<(), ()> {
+		let command_buffer_begin_info =
+			vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+		self.device
+			.begin_command_buffer(self.render_command_buffer, &command_buffer_begin_info)
+			.map_err(|e| log::error!("Failed to begin command buffer: {}", e))?;
+		
 		let clear_values = [
 			vk::ClearValue {
 				color: vk::ClearColorValue {
@@ -253,8 +264,8 @@ impl Renderer {
 				depth_stencil: vk::ClearDepthStencilValue { depth: 1.0, stencil: 0 },
 			},
 		];
-
-		let size = present_backend.get_current_size();
+		
+		let size = present_backend.get_current_size(); // TODO store this locally
 		let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
 			.render_pass(self.render_pass)
 			.framebuffer(self.back_render_target.framebuffer)
@@ -266,48 +277,69 @@ impl Renderer {
 				},
 			})
 			.clear_values(&clear_values);
+		
+		self.device
+			.cmd_begin_render_pass(self.render_command_buffer, &render_pass_begin_info, vk::SubpassContents::INLINE);
+		self.device
+			.cmd_bind_pipeline(self.render_command_buffer, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
+		self.device.cmd_set_viewport(self.render_command_buffer, 0, &self.viewports);
+		self.device.cmd_set_scissor(self.render_command_buffer, 0, &self.scissors);
+		
+		Ok(())
+	}
+	
+	pub unsafe fn end_render_pass(&mut self) -> Result<(), ()> {
+		self.device.cmd_end_render_pass(self.render_command_buffer);
+		self.device
+			.end_command_buffer(self.render_command_buffer)
+			.map_err(|e| log::error!("Failed to end command buffer: {}", e))?;
+		Ok(())
+	}
+	
+	pub unsafe fn submit_command_buffer(&mut self, fence: vk::Fence) -> Result<(), ()> {
+		let render_target = &self.back_render_target;
+		let wait_semaphores = &[];
+		let wait_dst_stage_mask =&[];
+		let signal_semaphores = &[];
+		let command_buffers = vec![self.render_command_buffer];
+		let submit_info = vk::SubmitInfo::builder()
+			.wait_semaphores(wait_semaphores)
+			.wait_dst_stage_mask(wait_dst_stage_mask)
+			.command_buffers(&command_buffers)
+			.signal_semaphores(signal_semaphores);
 
-		let fence = create_fence(&self.device, false)?;
-		record_submit_command_buffer(
-			&self.device,
-			self.queue,
-			self.render_command_buffer,
-			fence,
-			&[],
-			&[],
-			&[],
-			|cmd_buf| {
-				self.device
-					.cmd_begin_render_pass(cmd_buf, &render_pass_begin_info, vk::SubpassContents::INLINE);
-				self.device
-					.cmd_bind_pipeline(cmd_buf, vk::PipelineBindPoint::GRAPHICS, self.pipeline);
-				self.device.cmd_set_viewport(cmd_buf, 0, &self.viewports);
-				self.device.cmd_set_scissor(cmd_buf, 0, &self.scissors);
-				for object in &self.objects {
-					if !object.draw {
-						continue;
-					}
-					self.device
-						.cmd_bind_vertex_buffers(cmd_buf, 0, &[object.vertex_buffer], &[0]);
-					self.device
-						.cmd_bind_index_buffer(cmd_buf, object.index_buffer, 0, vk::IndexType::UINT32);
-					self.device.cmd_bind_descriptor_sets(
-						cmd_buf,
-						vk::PipelineBindPoint::GRAPHICS,
-						self.pipeline_layout,
-						0,
-						&[object.descriptor_set],
-						&[],
-					);
-					self.device.cmd_draw_indexed(cmd_buf, 6, 1, 0, 0, 0);
-				}
-				self.device.cmd_end_render_pass(cmd_buf);
-				Ok(())
-			},
-		)?;
-
+		self.device
+			.queue_submit(self.queue, &[submit_info.build()], fence)
+			.map_err(|e| log::error!("Failed to submit to queue: {}", e))?;
+		
 		std::mem::swap(&mut self.front_render_target, &mut self.back_render_target);
-
+		
+		Ok(())
+	}
+	
+	pub unsafe fn draw_object(&mut self, object: ObjectHandle) -> Result<(), ()> {
+		let object = self.get_object(object).ok_or_else(|| ())?;
+		self.device
+			.cmd_bind_vertex_buffers(self.render_command_buffer, 0, &[object.vertex_buffer], &[0]);
+		self.device
+			.cmd_bind_index_buffer(self.render_command_buffer, object.index_buffer, 0, vk::IndexType::UINT32);
+		self.device.cmd_bind_descriptor_sets(
+			self.render_command_buffer,
+			vk::PipelineBindPoint::GRAPHICS,
+			self.pipeline_layout,
+			0,
+			&[object.descriptor_set],
+			&[],
+		);
+		self.device.cmd_draw_indexed(self.render_command_buffer, 6, 1, 0, 0, 0);
+		Ok(())
+	}
+	
+	pub unsafe fn draw_objects<I: IntoIterator<Item = ObjectHandle>>(&mut self, objects: I) -> Result<(), ()> {
+		for object_handle in objects {
+			self.draw_object(object_handle)?;
+		}
+		
 		Ok(())
 	}
 
@@ -364,6 +396,14 @@ impl Renderer {
 			&[Mvp::no_transform()],
 			vk::BufferUsageFlags::UNIFORM_BUFFER,
 		)?;
+		let uniform_buffer_memory_map = self.device
+			.map_memory(
+				uniform_buffer_memory,
+				0,
+				std::mem::size_of::<Mvp>() as u64,
+				vk::MemoryMapFlags::empty(),
+			)
+			.map_err(|e| log::error!("Failed to map MVP memory: {}", e))?;
 		let descriptor_set = create_descriptor_set(
 			&self.device,
 			self.descriptor_pool,
@@ -376,7 +416,6 @@ impl Renderer {
 		self.current_object_handle += 1;
 		let mut object = Object {
 			id,
-			draw: false,
 			vertex_buffer,
 			vertex_buffer_memory,
 			index_buffer,
@@ -384,6 +423,7 @@ impl Renderer {
 			texture,
 			uniform_buffer,
 			uniform_buffer_memory,
+			uniform_buffer_memory_map,
 			descriptor_set,
 		};
 		f(&mut object);
@@ -407,28 +447,6 @@ impl Renderer {
 		self.objects.iter_mut().find(|object| object.id == handle)
 	}
 
-	pub unsafe fn move_object(&mut self, handle: ObjectHandle, delta: Vec2) {
-		if let Some(object) = self.get_object(handle) {
-			let mem = self
-				.device
-				.map_memory(
-					object.uniform_buffer_memory,
-					0,
-					std::mem::size_of::<Mvp>() as u64,
-					vk::MemoryMapFlags::empty(),
-				)
-				.unwrap();
-			let mut mvp_slice = ash::util::Align::new(
-				mem,
-				std::mem::align_of::<Mvp>() as u64,
-				std::mem::size_of::<Mvp>() as u64,
-			);
-			let new_mvp = Mvp::model_translate(Vec3::new(delta.x, delta.y, 0.0));
-			mvp_slice.copy_from_slice(&[new_mvp]);
-			self.device.unmap_memory(object.uniform_buffer_memory);
-		}
-	}
-
 	pub unsafe fn delete_object(&mut self, handle: ObjectHandle) {
 		if let Some(index) = self
 			.objects
@@ -443,6 +461,7 @@ impl Renderer {
 			self.device.free_memory(object.index_buffer_memory, None);
 			object.texture.destroy(&self.device);
 			self.device.destroy_buffer(object.uniform_buffer, None);
+			self.device.unmap_memory(object.uniform_buffer_memory);
 			self.device.free_memory(object.uniform_buffer_memory, None);
 			self.device
 				.free_descriptor_sets(self.descriptor_pool, &[object.descriptor_set]);
@@ -452,7 +471,6 @@ impl Renderer {
 
 pub struct Object {
 	pub(crate) id: ObjectHandle,
-	pub(crate) draw: bool,
 	pub(crate) vertex_buffer: vk::Buffer,
 	pub(crate) vertex_buffer_memory: vk::DeviceMemory,
 	pub(crate) index_buffer: vk::Buffer,
@@ -460,8 +478,11 @@ pub struct Object {
 	pub(crate) texture: TextureData,
 	pub(crate) uniform_buffer: vk::Buffer,
 	pub(crate) uniform_buffer_memory: vk::DeviceMemory,
+	pub(crate) uniform_buffer_memory_map: *mut c_void,
 	pub(crate) descriptor_set: vk::DescriptorSet,
 }
+
+unsafe impl Send for Object {}
 
 impl Object {
 	pub unsafe fn replace_texture(
@@ -476,22 +497,13 @@ impl Object {
 		Ok(())
 	}
 
-	pub unsafe fn update_mvp(&mut self, device: &Device, mvp: Mvp) -> Result<(), ()> {
-		let mem = device
-			.map_memory(
-				self.uniform_buffer_memory,
-				0,
-				std::mem::size_of::<Mvp>() as u64,
-				vk::MemoryMapFlags::empty(),
-			)
-			.unwrap();
+	pub unsafe fn update_mvp(&mut self, mvp: Mvp) -> Result<(), ()> {
 		let mut device_slice = ash::util::Align::new(
-			mem,
+			self.uniform_buffer_memory_map,
 			std::mem::align_of::<Mvp>() as u64,
 			std::mem::size_of::<Mvp>() as u64,
 		);
 		device_slice.copy_from_slice(&[mvp]);
-		device.unmap_memory(self.uniform_buffer_memory);
 		Ok(())
 	}
 }
@@ -516,9 +528,9 @@ unsafe fn create_instance(entry: &Entry) -> Result<Instance, ()> {
 		.engine_version(0)
 		.api_version(vk::make_version(1, 0, 0));
 
-	let layer_names: &[*const c_char] = &[CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0")
-		.unwrap()
-		.as_ptr()];
+	let layer_names: &[*const c_char] = &[
+		CStr::from_bytes_with_nul(b"VK_LAYER_KHRONOS_validation\0").unwrap().as_ptr()
+	];
 	let extension_names: &[*const c_char] = &[
 		CStr::from_bytes_with_nul(b"VK_EXT_debug_utils\0").unwrap().as_ptr(),
 		//CStr::from_bytes_with_nul(b"VK_KHR_display\0").unwrap().as_ptr(), // THIS EXTENSION LOCKS THE DEVICE PRIMARY NODE AND MAKES DRM APIS FAIL WITH EACCESS. OH MY GOD THAT TOOK ME FOREVER TO FIGURE OUT
@@ -584,7 +596,9 @@ unsafe fn create_device(
 		.queue_priorities(&priorities)
 		.build()];
 
-	let layer_names = &[b"VK_LAYER_KHRONOS_validation\0" as *const _ as *const c_char];
+	let layer_names = &[
+		b"VK_LAYER_KHRONOS_validation\0" as *const _ as *const c_char
+	];
 
 	let extension_names = &[
 		b"VK_KHR_swapchain\0" as *const _ as *const c_char,
@@ -705,12 +719,14 @@ pub(crate) unsafe fn create_render_target(
 	bind_image_memory(device, image, image_memory)?;
 	let image_view = create_image_view(device, image, format, vk::ImageAspectFlags::COLOR)?;
 	let framebuffer = create_fb(device, render_pass, image_view, depth_image_view, width, height)?;
+	let render_complete_semaphore = create_semaphore(device)?;
 
 	Ok(RenderTarget {
 		image,
 		image_view,
 		image_memory,
 		framebuffer,
+		render_complete_semaphore,
 	})
 }
 
@@ -1543,11 +1559,11 @@ pub(crate) unsafe fn create_pipeline(
 		..Default::default()
 	};
 	let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
-		blend_enable: 0,
-		src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
-		dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
+		blend_enable: vk::TRUE,
+		src_color_blend_factor: vk::BlendFactor::SRC_ALPHA,
+		dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
 		color_blend_op: vk::BlendOp::ADD,
-		src_alpha_blend_factor: vk::BlendFactor::ZERO,
+		src_alpha_blend_factor: vk::BlendFactor::ONE,
 		dst_alpha_blend_factor: vk::BlendFactor::ZERO,
 		alpha_blend_op: vk::BlendOp::ADD,
 		color_write_mask: vk::ColorComponentFlags::all(),

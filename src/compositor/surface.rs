@@ -33,7 +33,7 @@ impl<R: RenderBackend> SurfaceTree<R> {
 			.surfaces
 			.iter()
 			.enumerate()
-			.find(|(i, test_surface)| **test_surface == surface)
+			.find(|(_i, test_surface)| **test_surface == surface)
 			.map(|x| x.0)
 		{
 			let surface = self.surfaces.remove(i);

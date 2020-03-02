@@ -50,8 +50,8 @@ impl SurfaceCreator for WinitSurfaceCreator {
 
 	unsafe fn create_surface(
 		&mut self,
-		physical_device: vk::PhysicalDevice,
-		device: &Device,
+		_physical_device: vk::PhysicalDevice,
+		_device: &Device,
 	) -> Result<Self::SurfaceOwner, ()> {
 		use winit::platform::unix::WindowExtUnix;
 

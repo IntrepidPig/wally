@@ -23,6 +23,7 @@ pub struct VulkanRenderBackend<P: PresentBackend> {
 	renderer: Renderer,
 	present_backend: P,
 	cursor: ObjectHandle,
+	render_complete_fence: vk::Fence,
 }
 
 impl<P: PresentBackend> VulkanRenderBackend<P> {
@@ -38,13 +39,13 @@ impl<P: PresentBackend> VulkanRenderBackend<P> {
 			.unwrap();
 
 			let cursor = renderer.create_object_with_texture(cursor_texture).unwrap();
-			let object = renderer.get_object_mut(cursor).unwrap();
-			object.draw = true;
+			let render_complete_fence = renderer::create_fence(&renderer.device, false).unwrap();
 
 			Self {
 				renderer,
 				present_backend,
 				cursor,
+				render_complete_fence,
 			}
 		}
 	}
@@ -77,30 +78,16 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 	type ObjectHandle = VulkanSurfaceData;
 
 	fn update(&mut self) -> Result<(), Self::Error> {
-		let renderer = &mut self.renderer;
-		let present_backend = &mut self.present_backend;
-		unsafe {
-			renderer.render_all_objects(present_backend).map_err(|_e| {
-				log::error!("Rendering failed");
-				VulkanRenderBackendError::Unknown
-			})?;
-			present_backend.present(renderer).map_err(|_e| {
-				log::error!("Presenting failed");
-				VulkanRenderBackendError::Unknown
-			})?;
-		};
-
 		Ok(())
 	}
 
 	fn create_object(&mut self) -> Result<Self::ObjectHandle, Self::Error> {
 		unsafe {
-			let device = &self.renderer.device.clone();
 			let handle = self
 				.renderer
 				.create_object_with(|object| {
 					let mvp = Mvp::new_surface((0, 0), (1, 1), (1, 1));
-					object.update_mvp(device, mvp).unwrap();
+					object.update_mvp(mvp).unwrap();
 				})
 				.unwrap();
 			let surface_data = Self::ObjectHandle { object_handle: handle };
@@ -124,6 +111,9 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 			let device_memory_properties = self.renderer.device_memory_properties;
 			let sampler = self.renderer.sampler;
 			let current_size = self.present_backend.get_current_size();
+			let renderer = &mut self.renderer;
+			let present_backend = &mut self.present_backend;
+			renderer.begin_render_pass(present_backend).map_err(|_| VulkanRenderBackendError::Unknown)?;
 			for surface in tree.surfaces_ascending() {
 				let surface_data = surface
 					.as_ref()
@@ -132,7 +122,7 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 					.unwrap();
 				let surface_data_lock = &mut *surface_data.lock().unwrap();
 				let object_handle = surface_data_lock.renderer_data.as_ref().unwrap().object_handle;
-				let object = match self.renderer.get_object_mut(object_handle) {
+				let object = match renderer.get_object_mut(object_handle) {
 					Some(obj) => obj,
 					None => {
 						log::warn!("Vulkan object referenced by surface was destroyed");
@@ -156,7 +146,6 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 					)
 					.unwrap();
 					object.replace_texture(device, sampler, texture).unwrap();
-					object.draw = true;
 					committed_buffer.0.release();
 				}
 				if let Some(role) = surface_data_lock.role.as_ref() {
@@ -170,16 +159,15 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 							let toplevel_data_lock = toplevel_data.lock().unwrap();
 							object
 								.update_mvp(
-									device,
 									Mvp::new_surface(toplevel_data_lock.pos, toplevel_data_lock.size, current_size),
 								)
 								.unwrap();
+							renderer.draw_object(object_handle).map_err(|_| VulkanRenderBackendError::Unknown)?;
 						}
 						Role::Cursor(pointer_state) => {
 							let pointer_state = &mut *pointer_state.lock().unwrap();
 							object
 								.update_mvp(
-									device,
 									Mvp::new_surface(
 										(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
 										(10, 10), // TODO
@@ -187,23 +175,18 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 									),
 								)
 								.unwrap();
+							renderer.draw_object(object_handle).map_err(|_| VulkanRenderBackendError::Unknown)?;
 						}
 					}
-				} else {
-					// Do not draw the surface if it has no role set
-					object.draw = false;
 				}
 				surface_data_lock.callback.as_ref().map(|callback| callback.done(42));
 			}
 			let pointer_state = tree.pointer.lock().unwrap();
 			//let default_cursor_object = self.renderer.get_object_mut(pointer_state.default.object_handle).unwrap();
-			let default_cursor_object = self.renderer.get_object_mut(self.cursor).unwrap();
+			let default_cursor_object = renderer.get_object_mut(self.cursor).unwrap();
 			if pointer_state.custom_cursor.is_none() {
-				// Draw the default cursor
-				default_cursor_object.draw = true;
 				default_cursor_object
 					.update_mvp(
-						device,
 						Mvp::new_surface(
 							(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
 							(10, 10), // TODO
@@ -211,9 +194,17 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 						),
 					)
 					.unwrap();
-			} else {
-				default_cursor_object.draw = false;
+				renderer.draw_object(self.cursor).map_err(|_| VulkanRenderBackendError::Unknown)?;
 			}
+			
+			renderer.end_render_pass().map_err(|_| VulkanRenderBackendError::Unknown)?;
+			renderer.submit_command_buffer(self.render_complete_fence).map_err(|_| VulkanRenderBackendError::Unknown)?;
+			renderer.device.wait_for_fences(&[self.render_complete_fence], true, std::u64::MAX).map_err(|_| VulkanRenderBackendError::Unknown)?;
+			renderer.device.reset_fences(&[self.render_complete_fence]).map_err(|_| VulkanRenderBackendError::Unknown)?;
+			present_backend.present(renderer).map_err(|_e| {
+				log::error!("Presenting failed");
+				VulkanRenderBackendError::Unknown
+			})?;
 		}
 
 		Ok(())
