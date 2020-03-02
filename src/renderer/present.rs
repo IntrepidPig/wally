@@ -72,7 +72,7 @@ pub struct GenericPresentBackend<S: SurfaceCreator> {
 	surface_format: vk::SurfaceFormatKHR,
 	swapchain: vk::SwapchainKHR,
 	image_available_semaphores: Vec<vk::Semaphore>,
-	rendering_complete_semaphores: Vec<vk::Semaphore>,
+	transfer_complete_semaphores: Vec<vk::Semaphore>,
 	in_flight_fences: Vec<vk::Fence>,
 	images_in_flight: Vec<vk::Fence>,
 	current_frame: usize,
@@ -202,7 +202,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			.into_iter()
 			.map(|_| renderer::create_semaphore(device))
 			.collect::<Result<Vec<_>, ()>>()?;
-		let rendering_complete_semaphores = (0..MAX_FRAMES_IN_FLIGHT)
+		let transfer_complete_semaphores = (0..MAX_FRAMES_IN_FLIGHT)
 			.into_iter()
 			.map(|_| renderer::create_semaphore(device))
 			.collect::<Result<Vec<_>, ()>>()?;
@@ -234,7 +234,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			surface_format,
 			swapchain,
 			image_available_semaphores,
-			rendering_complete_semaphores,
+			transfer_complete_semaphores,
 			in_flight_fences,
 			images_in_flight,
 			current_frame: 0,
@@ -255,8 +255,11 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 	unsafe fn present(&mut self, base: &mut renderer::Renderer) -> Result<(), ()> {
 		let initial_wait_start = Instant::now();
 		base.device
-			.wait_for_fences(&[self.in_flight_fences[self.current_frame]], true, std::u64::MAX)
+			.wait_for_fences(&[base.front_render_target.write_complete_fence], true, std::u64::MAX)
 			.map_err(|e| log::error!("Error waiting for fence: {}", e))?;
+		base.device
+			.reset_fences(&[base.front_render_target.write_complete_fence])
+			.unwrap();
 		if crate::compositor::profile_output() {
 			log::debug!(
 				"Waited for frame fence for {} ms",
@@ -304,15 +307,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 		}
 		self.images_in_flight[image_index] = self.in_flight_fences[self.current_frame];
 
-		base.device
-			.reset_fences(&[self.in_flight_fences[self.current_frame]])
-			.unwrap();
-
 		let size = self.surface_creator.get_size(&self.surface_owner);
-
-		let wait_mask = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-		let wait_semaphores = [self.image_available_semaphores[self.current_frame]];
-		let signal_semaphores = [self.rendering_complete_semaphores[self.current_frame]];
 		
 		renderer::transition_image_layout(
 			&base.device,
@@ -330,6 +325,10 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			vk::ImageLayout::PRESENT_SRC_KHR,
 			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 		)?;
+		
+		let wait_mask = [vk::PipelineStageFlags::BOTTOM_OF_PIPE, vk::PipelineStageFlags::BOTTOM_OF_PIPE];
+		let wait_semaphores = [base.front_render_target.write_complete_semaphore, self.image_available_semaphores[self.current_frame]];
+		let signal_semaphores = [self.transfer_complete_semaphores[self.current_frame]];
 		copy_present_image(
 			&base.device,
 			base.queue,
@@ -343,7 +342,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			&wait_mask,
 			&wait_semaphores,
 			&signal_semaphores,
-			self.in_flight_fences[self.current_frame],
+			base.front_render_target.read_complete_fence,
 		)?;
 		renderer::transition_image_layout(
 			&base.device,
@@ -362,7 +361,7 @@ impl<S: SurfaceCreator> PresentBackend for GenericPresentBackend<S> {
 			vk::ImageLayout::PRESENT_SRC_KHR,
 		)?;
 
-		let wait_semaphores = [self.rendering_complete_semaphores[self.current_frame]];
+		let wait_semaphores = [self.transfer_complete_semaphores[self.current_frame]];
 		let swapchains = [self.swapchain];
 		let image_indices = [image_index as u32];
 

@@ -41,7 +41,10 @@ pub struct RenderTarget {
 	image_view: vk::ImageView,
 	image_memory: vk::DeviceMemory,
 	framebuffer: vk::Framebuffer,
-	render_complete_semaphore: vk::Semaphore,
+	read_complete_semaphore: vk::Semaphore,
+	read_complete_fence: vk::Fence,
+	write_complete_semaphore: vk::Semaphore,
+	write_complete_fence: vk::Fence,
 }
 
 pub struct Renderer {
@@ -296,11 +299,17 @@ impl Renderer {
 		Ok(())
 	}
 	
-	pub unsafe fn submit_command_buffer(&mut self, fence: vk::Fence) -> Result<(), ()> {
+	pub unsafe fn submit_command_buffer(&mut self) -> Result<(), ()> {
 		let render_target = &self.back_render_target;
+		
+		self.device.wait_for_fences(&[render_target.read_complete_fence], true, std::u64::MAX)
+			.map_err(|e| log::error!("Error while waiting for fence: {}", e))?;
+		self.device.reset_fences(&[render_target.read_complete_fence])
+			.map_err(|e| log::error!("Error resetting fence: {}", e))?;
+		
 		let wait_semaphores = &[];
-		let wait_dst_stage_mask =&[];
-		let signal_semaphores = &[];
+		let wait_dst_stage_mask = &[];
+		let signal_semaphores = &[render_target.write_complete_semaphore];
 		let command_buffers = vec![self.render_command_buffer];
 		let submit_info = vk::SubmitInfo::builder()
 			.wait_semaphores(wait_semaphores)
@@ -309,7 +318,7 @@ impl Renderer {
 			.signal_semaphores(signal_semaphores);
 
 		self.device
-			.queue_submit(self.queue, &[submit_info.build()], fence)
+			.queue_submit(self.queue, &[submit_info.build()], render_target.write_complete_fence)
 			.map_err(|e| log::error!("Failed to submit to queue: {}", e))?;
 		
 		std::mem::swap(&mut self.front_render_target, &mut self.back_render_target);
@@ -719,14 +728,20 @@ pub(crate) unsafe fn create_render_target(
 	bind_image_memory(device, image, image_memory)?;
 	let image_view = create_image_view(device, image, format, vk::ImageAspectFlags::COLOR)?;
 	let framebuffer = create_fb(device, render_pass, image_view, depth_image_view, width, height)?;
-	let render_complete_semaphore = create_semaphore(device)?;
+	let read_complete_semaphore = create_semaphore(device)?;
+	let read_complete_fence = create_fence(device, true)?;
+	let write_complete_semaphore = create_semaphore(device)?;
+	let write_complete_fence = create_fence(device, false)?;
 
 	Ok(RenderTarget {
 		image,
 		image_view,
 		image_memory,
 		framebuffer,
-		render_complete_semaphore,
+		read_complete_semaphore,
+		read_complete_fence,
+		write_complete_semaphore,
+		write_complete_fence,
 	})
 }
 

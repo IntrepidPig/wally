@@ -91,6 +91,14 @@ impl PresentBackend for DrmPresentBackend {
 
 	unsafe fn present(&mut self, base: &mut renderer::Renderer) -> Result<(), ()> {
 		let size = self.get_current_size();
+		
+		base.device
+			.wait_for_fences(&[base.front_render_target.write_complete_fence], true, std::u64::MAX)
+			.map_err(|e| log::error!("Error waiting for fences: {:?}", e))?;
+		base.device
+			.reset_fences(&[base.front_render_target.write_complete_fence])
+			.map_err(|e| log::error!("Error while resetting fences: {}", e))?;
+		
 		renderer::transition_image_layout(
 			&base.device,
 			base.queue,
@@ -99,6 +107,9 @@ impl PresentBackend for DrmPresentBackend {
 			vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
 			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 		)?;
+		let wait_mask = &[vk::PipelineStageFlags::BOTTOM_OF_PIPE];
+		let wait_semaphores = &[base.front_render_target.write_complete_semaphore];
+		let signal_semaphores = &[];
 		renderer::present::copy_present_image(
 			&base.device,
 			base.queue,
@@ -109,10 +120,10 @@ impl PresentBackend for DrmPresentBackend {
 			vk::ImageLayout::TRANSFER_DST_OPTIMAL,
 			size.0,
 			size.1,
-			&[],
-			&[],
-			&[],
-			self.present_fence,
+			wait_mask,
+			wait_semaphores,
+			signal_semaphores,
+			base.front_render_target.read_complete_fence,
 		)?;
 		renderer::transition_image_layout(
 			&base.device,
@@ -122,12 +133,6 @@ impl PresentBackend for DrmPresentBackend {
 			vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
 			vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
 		)?;
-		base.device
-			.wait_for_fences(&[self.present_fence], true, std::u64::MAX)
-			.map_err(|e| log::error!("Error waiting for fences: {:?}", e))?;
-		base.device
-			.reset_fences(&[self.present_fence])
-			.map_err(|e| log::error!("Error while resetting fences: {}", e))?;
 
 		Ok(())
 	}

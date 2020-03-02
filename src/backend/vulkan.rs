@@ -23,7 +23,6 @@ pub struct VulkanRenderBackend<P: PresentBackend> {
 	renderer: Renderer,
 	present_backend: P,
 	cursor: ObjectHandle,
-	render_complete_fence: vk::Fence,
 }
 
 impl<P: PresentBackend> VulkanRenderBackend<P> {
@@ -39,13 +38,11 @@ impl<P: PresentBackend> VulkanRenderBackend<P> {
 			.unwrap();
 
 			let cursor = renderer.create_object_with_texture(cursor_texture).unwrap();
-			let render_complete_fence = renderer::create_fence(&renderer.device, false).unwrap();
 
 			Self {
 				renderer,
 				present_backend,
 				cursor,
-				render_complete_fence,
 			}
 		}
 	}
@@ -170,7 +167,7 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 								.update_mvp(
 									Mvp::new_surface(
 										(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
-										(10, 10), // TODO
+										(24, 24), // TODO
 										current_size,
 									),
 								)
@@ -189,7 +186,7 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 					.update_mvp(
 						Mvp::new_surface(
 							(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
-							(10, 10), // TODO
+							(24, 24), // TODO
 							current_size,
 						),
 					)
@@ -198,9 +195,7 @@ impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
 			}
 			
 			renderer.end_render_pass().map_err(|_| VulkanRenderBackendError::Unknown)?;
-			renderer.submit_command_buffer(self.render_complete_fence).map_err(|_| VulkanRenderBackendError::Unknown)?;
-			renderer.device.wait_for_fences(&[self.render_complete_fence], true, std::u64::MAX).map_err(|_| VulkanRenderBackendError::Unknown)?;
-			renderer.device.reset_fences(&[self.render_complete_fence]).map_err(|_| VulkanRenderBackendError::Unknown)?;
+			renderer.submit_command_buffer().map_err(|_| VulkanRenderBackendError::Unknown)?;
 			present_backend.present(renderer).map_err(|_e| {
 				log::error!("Presenting failed");
 				VulkanRenderBackendError::Unknown
