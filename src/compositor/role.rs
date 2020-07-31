@@ -5,41 +5,69 @@ use std::{
 
 use wayland_protocols::xdg_shell::server::*;
 
-use crate::compositor::{xdg::XdgToplevelData, PointerState};
+use crate::compositor::{
+	prelude::*,
+	xdg::{XdgSurfaceData, XdgSurfaceRole, XdgToplevelData},
+	PointerState, Synced,
+};
 
 #[derive(Clone)]
 pub enum Role {
-	XdgToplevel(xdg_toplevel::XdgToplevel),
-	Cursor(Arc<Mutex<PointerState>>),
+	XdgSurface(xdg_surface::XdgSurface),
 }
 
 impl Role {
 	pub fn destroy(&mut self) {
 		match *self {
-			Role::XdgToplevel(ref _xdg_toplevel) => {}
-			Role::Cursor(ref _pointer_state) => {}
+			Role::XdgSurface(ref xdg_surface) => {}
 		}
 	}
 
-	pub fn get_geometry(&self) -> Option<(i32, i32, u32, u32)> {
+	pub fn commit_pending_state(&mut self) {
 		match self {
-			Role::XdgToplevel(ref xdg_toplevel) => {
-				let xdg_toplevel_data = xdg_toplevel
+			Role::XdgSurface(ref xdg_surface) => {
+				let xdg_surface_data = xdg_surface
 					.as_ref()
 					.user_data()
-					.get::<Arc<Mutex<XdgToplevelData>>>()
+					.get::<Synced<XdgSurfaceData>>()
 					.unwrap();
-				let xdg_toplevel_data_lock = xdg_toplevel_data.lock().unwrap();
-				Some((
-					xdg_toplevel_data_lock.pos.0,
-					xdg_toplevel_data_lock.pos.1,
-					xdg_toplevel_data_lock.size.0,
-					xdg_toplevel_data_lock.size.1,
-				))
+				let mut xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
+				xdg_surface_data_lock.commit_pending_state();
 			}
-			Role::Cursor(ref _pointer_state) => {
-				log::warn!("Tried to get geometry of cursor");
-				None
+		}
+	}
+
+	pub fn resize_window(&mut self, size: Size) {
+		match self {
+			Role::XdgSurface(ref xdg_surface) => {
+				let xdg_surface_data = xdg_surface
+					.as_ref()
+					.user_data()
+					.get::<Synced<XdgSurfaceData>>()
+					.unwrap();
+				let mut xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
+				xdg_surface_data_lock.resize_window(size);
+				xdg_surface.configure(42);
+			}
+		}
+	}
+
+	pub fn set_surface_size(&mut self, size: Size) {
+		match self {
+			Role::XdgSurface(ref xdg_surface) => log::warn!("Set surface size not fully implemented"),
+		}
+	}
+
+	pub fn get_solid_window_geometry(&self) -> Option<Rect> {
+		match self {
+			Role::XdgSurface(ref xdg_surface) => {
+				let xdg_surface_data = xdg_surface
+					.as_ref()
+					.user_data()
+					.get::<Synced<XdgSurfaceData>>()
+					.unwrap();
+				let xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
+				xdg_surface_data_lock.solid_window_geometry
 			}
 		}
 	}
@@ -48,18 +76,14 @@ impl Role {
 impl fmt::Debug for Role {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
-			Role::XdgToplevel(ref xdg_toplevel) => {
-				let xdg_toplevel_data_ref: &Arc<Mutex<XdgToplevelData>> = xdg_toplevel
+			Role::XdgSurface(ref xdg_surface) => {
+				let xdg_surface_data = xdg_surface
 					.as_ref()
 					.user_data()
-					.get::<Arc<Mutex<XdgToplevelData>>>()
+					.get::<Synced<XdgSurfaceData>>()
 					.unwrap();
-				let xdg_toplevel_data_lock = xdg_toplevel_data_ref.lock().unwrap();
-				fmt::Debug::fmt(&*xdg_toplevel_data_lock, f)
-			}
-			Role::Cursor(ref pointer_state) => {
-				let pointer_state = pointer_state.lock().unwrap();
-				fmt::Debug::fmt(&*pointer_state, f)
+				let xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
+				fmt::Debug::fmt(&*xdg_surface_data_lock, f)
 			}
 		}
 	}

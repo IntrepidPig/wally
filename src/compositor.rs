@@ -17,9 +17,11 @@ use thiserror::Error;
 use wayland_server::{protocol::*, Client, Display, Filter, Main};
 
 use crate::{
-	backend::{BackendEvent, InputBackend, MergedBackend, RenderBackend},
+	backend::{BackendEvent, GraphicsBackend, InputBackend, ShmBuffer},
+	behavior::{WindowManager},
 	compositor::prelude::*,
-	compositor::surface::{SurfaceData, SurfaceTree},
+	compositor::surface::SurfaceData,
+	renderer::{Renderer},
 };
 
 pub mod client;
@@ -38,14 +40,11 @@ pub mod prelude {
 
 	pub use wayland_server::{protocol::*, Client, Display, Filter, Main};
 
+	pub use festus::geometry::*;
+
 	pub use crate::{
-		backend::{BackendEvent, InputBackend, RenderBackend},
-		compositor::{
-			client::ClientInfo,
-			role::Role,
-			surface::{SurfaceData, SurfaceTree},
-			PointerState, Synced,
-		},
+		backend::{BackendEvent, GraphicsBackend, InputBackend},
+		compositor::{client::ClientInfo, role::Role, surface::SurfaceData, PointerState, Synced},
 	};
 }
 
@@ -67,22 +66,32 @@ pub fn debug_output() -> bool {
 	DEBUG_OUTPUT.load(Ordering::Relaxed)
 }
 
-pub struct Compositor<I: InputBackend, R: RenderBackend> {
+pub struct Compositor<I: InputBackend, G: GraphicsBackend> {
 	display: Display,
-	inner: Arc<Mutex<CompositorInner<I, R>>>,
-	pub(crate) backend: Arc<Mutex<MergedBackend<I, R>>>,
+	inner: Arc<Mutex<CompositorInner<I, G>>>,
+	pub(crate) input_backend_state: Arc<Mutex<InputBackendState<I>>>,
+	pub(crate) graphics_backend_state: Arc<Mutex<GraphicsBackendState<G>>>,
 	_signal_event_source: Source<Signals>,
 	_idle_event_source: calloop::Idle,
 	_display_event_source: calloop::Source<calloop::generic::Generic<calloop::generic::EventedRawFd>>,
 	_input_event_source: calloop::Source<calloop::channel::Channel<BackendEvent>>,
 }
 
-pub struct CompositorInner<I: InputBackend, R: RenderBackend> {
+pub struct InputBackendState<I: InputBackend> {
+	pub input_backend: I,
+}
+
+pub struct GraphicsBackendState<G: GraphicsBackend> {
+	pub renderer: Renderer<G>,
+}
+
+pub struct CompositorInner<I: InputBackend, G: GraphicsBackend> {
 	running: bool,
 	pub client_manager: ClientManager,
-	pub surface_tree: SurfaceTree<R>,
+	pub window_manager: WindowManager<G>,
 	pub pointer: Arc<Mutex<PointerState>>,
-	pub focused: Option<wl_surface::WlSurface>,
+	pub pointer_focus: Option<wl_surface::WlSurface>,
+	pub keyboard_focus: Option<wl_surface::WlSurface>,
 	phantom: PhantomData<I>,
 }
 
@@ -104,23 +113,21 @@ impl fmt::Debug for PointerState {
 
 pub struct CustomCursor {
 	pub surface: wl_surface::WlSurface,
-	pub hotspot_x: i32,
-	pub hotspot_y: i32,
+	pub hotspot: Point,
 }
 
 impl fmt::Debug for CustomCursor {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		f.debug_struct("CustomCursor")
 			.field("surface", &"<WlSurface>")
-			.field("hotspot_x", &self.hotspot_x)
-			.field("hotspot_y", &self.hotspot_y)
+			.field("hotspot", &self.hotspot)
 			.finish()
 	}
 }
 
-impl<I: InputBackend, R: RenderBackend> CompositorInner<I, R> {
+impl<I: InputBackend, G: GraphicsBackend> CompositorInner<I, G> {
 	fn trim_dead_clients(&mut self) {
-		self.surface_tree.surfaces.retain(|surface| {
+		/* self.surface_tree.surfaces.retain(|surface| {
 			log::debug!("Checking surface");
 			if !surface.as_ref().is_alive() {
 				log::debug!("Destroying surface");
@@ -128,7 +135,7 @@ impl<I: InputBackend, R: RenderBackend> CompositorInner<I, R> {
 			} else {
 				true
 			}
-		})
+		}) */
 	}
 }
 
@@ -168,13 +175,12 @@ pub struct ClientResources {
 	pub pointer: Option<wl_pointer::WlPointer>,
 }
 
-impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
+impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub fn new(
-		input_backend: I,
-		render_backend: R,
-		event_loop_handle: LoopHandle<Compositor<I, R>>,
-	) -> Result<Self, CompositorError> {
-		let mut backend = crate::backend::create_backend(input_backend, render_backend);
+		mut input_backend: I,
+		graphics_backend: G,
+		event_loop_handle: LoopHandle<Compositor<I, G>>,
+	) -> Result<Self, CompositorError<G>> {
 		let mut display = Display::new();
 		//let f = fs::File::create("/run/user/1000/wayland-0").unwrap();
 		display
@@ -185,7 +191,7 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 		let signal_event_source = event_loop_handle
 			.insert_source(
 				signals,
-				|_event: calloop::signals::Event, compositor: &mut Compositor<I, R>| {
+				|_event: calloop::signals::Event, compositor: &mut Compositor<I, G>| {
 					log::info!("Received sigint, exiting");
 					let mut inner = compositor.inner.lock().unwrap();
 					inner.running = false;
@@ -193,7 +199,7 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 			)
 			.expect("Failed to insert signal handler in event loop");
 
-		let idle_event_source = event_loop_handle.insert_idle(|_wally: &mut Compositor<I, R>| {
+		let idle_event_source = event_loop_handle.insert_idle(|_wally: &mut Compositor<I, G>| {
 			log::trace!("Finished processing events");
 		});
 
@@ -203,7 +209,7 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 		let display_event_source = event_loop_handle
 			.insert_source(
 				display_events,
-				|_event: calloop::generic::Event<calloop::generic::EventedRawFd>, compositor: &mut Compositor<I, R>| {
+				|_event: calloop::generic::Event<calloop::generic::EventedRawFd>, compositor: &mut Compositor<I, G>| {
 					log::trace!("Got display event");
 					compositor
 						.display
@@ -217,11 +223,11 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 			)
 			.expect("Failed to insert epoll fd in the event loop");
 
-		let input_events = backend.input_backend.get_event_source();
+		let input_events = input_backend.get_event_source();
 		let input_event_source = event_loop_handle
 			.insert_source(
 				input_events,
-				|e: calloop::channel::Event<BackendEvent>, compositor: &mut Compositor<I, R>| {
+				|e: calloop::channel::Event<BackendEvent>, compositor: &mut Compositor<I, G>| {
 					if let calloop::channel::Event::Msg(event) = e {
 						log::trace!("Got input event");
 						compositor.handle_input_event(event);
@@ -233,24 +239,35 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 		let client_manager = ClientManager::new();
 
 		let pointer_state = Arc::new(Mutex::new(PointerState {
-			pos: (10.0, 10.0),
-			sensitivity: 0.5,
+			pos: (0.0, 0.0),
+			sensitivity: 1.0,
 			custom_cursor: None,
 		}));
 
 		let inner = CompositorInner {
 			running: true,
 			client_manager,
-			surface_tree: SurfaceTree::new(Arc::clone(&pointer_state)),
+			window_manager: WindowManager::new(Box::new(crate::behavior::DumbWindowManagerBehavior::new(Arc::clone(
+				&pointer_state,
+			)))),
+			//surface_tree: SurfaceTree::new(Arc::clone(&pointer_state)),
 			pointer: pointer_state,
-			focused: None,
+			pointer_focus: None,
+			keyboard_focus: None,
 			phantom: PhantomData,
 		};
+
+		let input_backend_state = Arc::new(Mutex::new(InputBackendState { input_backend }));
+
+		let renderer = Renderer::init(graphics_backend).unwrap(); // TODO no unwrap
+
+		let graphics_backend_state = Arc::new(Mutex::new(GraphicsBackendState { renderer }));
 
 		Ok(Self {
 			display,
 			inner: Arc::new(Mutex::new(inner)),
-			backend: Arc::new(Mutex::new(backend)),
+			input_backend_state,
+			graphics_backend_state,
 			_signal_event_source: signal_event_source,
 			_idle_event_source: idle_event_source,
 			_display_event_source: display_event_source,
@@ -261,9 +278,9 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 	pub fn print_debug_info(&self) {
 		let inner = self.inner.lock().unwrap();
 		println!("Surfaces:");
-		for (i, surface) in inner.surface_tree.surfaces.iter().enumerate() {
+		for (i, surface) in inner.window_manager.manager_impl.surfaces_ascending().enumerate() {
 			println!("\tSurface@{} {}", surface.as_ref().id(), i);
-			if let Some(surface_data_ref) = surface.as_ref().user_data().get::<Arc<Mutex<SurfaceData<R>>>>() {
+			if let Some(surface_data_ref) = surface.as_ref().user_data().get::<Arc<Mutex<SurfaceData<G>>>>() {
 				let surface_data_lock = surface_data_ref.lock().unwrap();
 				if let Some(role) = surface_data_lock.role.as_ref() {
 					println!("\t\tRole: {:?}", role);
@@ -283,14 +300,14 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 		}
 	}
 
-	pub fn start(&mut self, event_loop: &mut EventLoop<Compositor<I, R>>) {
+	pub fn start(&mut self, event_loop: &mut EventLoop<Compositor<I, G>>) {
 		while self.inner.lock().unwrap().running {
 			let start = Instant::now();
 			{
 				let mut inner = self.inner.lock().unwrap();
 				let input_update_start = Instant::now();
-				let mut backend = self.backend.lock().unwrap();
-				backend
+				let mut input_backend_state = self.input_backend_state.lock().unwrap();
+				input_backend_state
 					.input_backend
 					.update()
 					.map_err(|_e| log::error!("Error updating the input backend"))
@@ -301,9 +318,11 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 						input_update_start.elapsed().as_secs_f64() * 1000.0
 					);
 				}
+				
 				let render_update_start = Instant::now();
-				backend
-					.render_backend
+				let mut graphics_backend_state = self.graphics_backend_state.lock().unwrap();
+				graphics_backend_state
+					.renderer
 					.update()
 					.map_err(|_e| log::error!("Error updating the render backend"))
 					.unwrap();
@@ -315,12 +334,20 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 				}
 				let inner = &mut *inner;
 				let render_tree_start = Instant::now();
-				let surface_tree = &inner.surface_tree;
-				backend
-					.render_backend
-					.render_tree(surface_tree)
-					.map_err(|_e| log::error!("Error rendering surface tree"))
+				let surfaces_iter = inner.window_manager.manager_impl.surfaces_ascending();
+				graphics_backend_state
+					.renderer
+					.render_scene(|mut scene_render_state| {
+						for surface in surfaces_iter {
+							scene_render_state.draw_surface(surface.clone())?;
+						}
+						let pointer_state = inner.pointer.lock().unwrap();
+						let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
+						scene_render_state.draw_cursor(pointer_pos)?;
+						Ok(())
+					})
 					.unwrap();
+				graphics_backend_state.renderer.present().unwrap();
 				if profile_output() {
 					log::debug!(
 						"Rendered surface tree in {} ms",
@@ -359,99 +386,185 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 	}
 
 	pub fn handle_input_event(&mut self, event: BackendEvent) {
-		println!("Got input: {:?}", event);
+		log::trace!("Got input: {:?}", event);
 		let mut inner = self.inner.lock().unwrap();
-		let backend = self.backend.lock().unwrap();
 		match event {
 			BackendEvent::StopRequested => {
 				inner.running = false;
 			}
 			BackendEvent::KeyPress(key_press) => {
 				let inner = &mut *inner;
-				if let Some(focused) = inner.focused.clone() {
+				if let Some(focused) = inner.keyboard_focus.clone() {
+					dbg!(focused.as_ref().id());
 					let surface_data_lock = focused
 						.as_ref()
 						.user_data()
-						.get::<Synced<SurfaceData<R::ObjectHandle>>>()
+						.get::<Synced<SurfaceData<G>>>()
 						.unwrap()
 						.lock()
 						.unwrap();
 					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
 					for keyboard in &client_info_lock.keyboards {
+						log::debug!("Sending key to focused keyboard");
+						dbg!(&key_press);
 						keyboard.key(key_press.serial, key_press.time, key_press.key, key_press.state);
 					}
 				}
 			}
 			BackendEvent::PointerMotion(pointer_motion) => {
-				let mut pointer_state = inner.pointer.lock().unwrap();
-				pointer_state.pos.0 += pointer_motion.dx_unaccelerated * pointer_state.sensitivity;
-				pointer_state.pos.1 += pointer_motion.dy_unaccelerated * pointer_state.sensitivity;
-				let size = backend.render_backend.get_size();
-				if pointer_state.pos.0 < 0.0 {
-					pointer_state.pos.0 = 0.0;
-				}
-				if pointer_state.pos.1 < 0.0 {
-					pointer_state.pos.1 = 0.0;
-				}
-				if pointer_state.pos.0 > size.0 as f64 {
-					pointer_state.pos.0 = size.0 as f64;
-				}
-				if pointer_state.pos.1 > size.1 as f64 {
-					pointer_state.pos.1 = size.1 as f64;
-				}
-			}
-			BackendEvent::PointerButton(pointer_button) => {
-				// Handle focus changes
-				let pointer_state = inner.pointer.lock().unwrap();
-				let pointer_pos = pointer_state.pos;
-				drop(pointer_state);
-				if let Some(surface) = inner
-					.surface_tree
-					.get_surface_under_point((pointer_pos.0 as i32, pointer_pos.1 as i32))
-				{
-					if let Some(old_focused) = inner.focused.take() {
-						if surface.as_ref().equals(old_focused.as_ref()) {
-							// No focus change, this is the same surface
+				let mut pointer_state_lock = inner.pointer.lock().unwrap();
+				pointer_state_lock.pos.0 += pointer_motion.dx_unaccelerated * pointer_state_lock.sensitivity;
+				pointer_state_lock.pos.1 += pointer_motion.dy_unaccelerated * pointer_state_lock.sensitivity;
+
+				let pointer_pos = pointer_state_lock.pos;
+				drop(pointer_state_lock);
+				let pointer_pos = Point::new(pointer_pos.0.round() as i32, pointer_pos.1.round() as i32);
+
+				if let Some(surface) = inner.window_manager.get_window_under_point(pointer_pos) {
+					let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+					let surface_data_lock = surface_data.lock().unwrap();
+					let surface_relative_coords =
+						if let Some(surface_position) = surface_data_lock.try_get_surface_position() {
+							Point::new(pointer_pos.x - surface_position.x, pointer_pos.y - surface_position.y)
 						} else {
-							// Unfocus the previously focused surface
-							let surface_data = surface
+							log::error!("Surface had no position set!");
+							Point::new(0, 0)
+						};
+
+					if let Some(old_pointer_focus) = inner.pointer_focus.clone() {
+						if surface.as_ref().equals(old_pointer_focus.as_ref()) {
+							// The pointer is over the same surface as it was previously, do not send any focus events
+						} else {
+							// The pointer is over a different surface, unfocus the old one and focus the new one
+							let old_surface_data = old_pointer_focus
 								.as_ref()
 								.user_data()
-								.get::<Arc<Mutex<SurfaceData<R::ObjectHandle>>>>()
+								.get::<Synced<SurfaceData<G>>>()
 								.unwrap();
-							let surface_data_lock = surface_data.lock().unwrap();
-							let client_info_lock = surface_data_lock.client_info.lock().unwrap();
-							for keyboard in &client_info_lock.keyboards {
-								keyboard.leave(get_input_serial(), &old_focused);
+							let old_surface_data_lock = old_surface_data.lock().unwrap();
+							let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
+							for pointer in &old_client_info_lock.pointers {
+								pointer.leave(get_input_serial(), &old_pointer_focus);
 							}
-							for pointer in &client_info_lock.pointers {
-								pointer.leave(get_input_serial(), &old_focused);
+							drop(old_client_info_lock);
+							drop(old_surface_data_lock);
+							let surface_client_info_lock = surface_data_lock.client_info.lock().unwrap();
+							for pointer in &surface_client_info_lock.pointers {
+								pointer.enter(
+									get_input_serial(),
+									&surface,
+									surface_relative_coords.x as f64,
+									surface_relative_coords.y as f64,
+								);
 							}
+							inner.pointer_focus = Some(surface.clone());
 						}
-						// Focus the new surface
-						let surface_data = surface
+					} else {
+						// The pointer has entered a surface while no other surface is focused, focus this surface
+						let surface_client_info_lock = surface_data_lock.client_info.lock().unwrap();
+						for pointer in &surface_client_info_lock.pointers {
+							pointer.enter(
+								get_input_serial(),
+								&surface,
+								surface_relative_coords.x as f64,
+								surface_relative_coords.y as f64,
+							);
+						}
+						inner.pointer_focus = Some(surface.clone());
+					}
+
+					// Send the surface the actual motion event
+					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
+					for pointer in &client_info_lock.pointers {
+						pointer.motion(
+							get_input_serial(),
+							surface_relative_coords.x as f64,
+							surface_relative_coords.y as f64,
+						);
+					}
+				} else {
+					// The pointer is not over any surface, remove pointer focus from the previous focused surface if any
+					if let Some(old_pointer_focus) = inner.pointer_focus.take() {
+						let surface_data = old_pointer_focus
 							.as_ref()
 							.user_data()
-							.get::<Arc<Mutex<SurfaceData<R::ObjectHandle>>>>()
+							.get::<Synced<SurfaceData<G>>>()
 							.unwrap();
 						let surface_data_lock = surface_data.lock().unwrap();
 						let client_info_lock = surface_data_lock.client_info.lock().unwrap();
-						for keyboard in &client_info_lock.keyboards {
-							keyboard.enter(get_input_serial(), &surface, Vec::new());
-						}
 						for pointer in &client_info_lock.pointers {
-							pointer.enter(get_input_serial(), &surface, 0.0, 0.0);
+							pointer.leave(get_input_serial(), &old_pointer_focus);
 						}
-						inner.focused = Some(surface.clone());
+					}
+				}
+			}
+			BackendEvent::PointerButton(pointer_button) => {
+				let pointer_state = inner.pointer.lock().unwrap();
+				let pointer_pos = pointer_state.pos;
+				drop(pointer_state);
+				let pointer_pos = Point::new(pointer_pos.0.round() as i32, pointer_pos.1.round() as i32);
+
+				if let Some(surface) = inner.window_manager.get_window_under_point(pointer_pos) {
+					let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+					let surface_data_lock = surface_data.lock().unwrap();
+
+					if pointer_button.state == wl_pointer::ButtonState::Pressed {
+						if let Some(old_keyboard_focus) = inner.keyboard_focus.clone() {
+							if surface.as_ref().equals(old_keyboard_focus.as_ref()) {
+								// No focus change, this is the same surface
+							} else {
+								// Change the keyboard focus
+								let old_surface_data = old_keyboard_focus
+									.as_ref()
+									.user_data()
+									.get::<Synced<SurfaceData<G>>>()
+									.unwrap();
+								let old_surface_data_lock = old_surface_data.lock().unwrap();
+								let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
+								for keyboard in &old_client_info_lock.keyboards {
+									keyboard.leave(get_input_serial(), &old_keyboard_focus);
+								}
+								drop(old_client_info_lock);
+								drop(old_surface_data_lock);
+								let new_client_info_lock = surface_data_lock.client_info.lock().unwrap();
+								for keyboard in &new_client_info_lock.keyboards {
+									keyboard.modifiers(get_input_serial(), 0, 0, 0, 0);
+									keyboard.enter(get_input_serial(), &surface, Vec::new());
+								}
+								inner.keyboard_focus = Some(surface.clone());
+							}
+						} else {
+							// Focus the keyboard on a window when there was no previously focused window
+							let new_client_info_lock = surface_data_lock.client_info.lock().unwrap();
+							for keyboard in &new_client_info_lock.keyboards {
+								keyboard.modifiers(get_input_serial(), 0, 0, 0, 0);
+								keyboard.enter(get_input_serial(), &surface, Vec::new());
+							}
+							inner.keyboard_focus = Some(surface.clone());
+						}
+					}
+				} else {
+					// Remove the keyboard focus from the current focus if empty space is clicked
+					if let Some(old_keyboard_focus) = inner.keyboard_focus.take() {
+						let old_surface_data = old_keyboard_focus
+							.as_ref()
+							.user_data()
+							.get::<Synced<SurfaceData<G>>>()
+							.unwrap();
+						let old_surface_data_lock = old_surface_data.lock().unwrap();
+						let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
+						for keyboard in &old_client_info_lock.keyboards {
+							keyboard.leave(get_input_serial(), &old_keyboard_focus);
+						}
 					}
 				}
 
 				// Send event to focused window
-				if let Some(focused) = inner.focused.clone() {
+				if let Some(focused) = inner.keyboard_focus.clone() {
 					let surface_data = focused
 						.as_ref()
 						.user_data()
-						.get::<Arc<Mutex<SurfaceData<R::ObjectHandle>>>>()
+						.get::<Arc<Mutex<SurfaceData<G>>>>()
 						.unwrap();
 					let surface_data_lock = surface_data.lock().unwrap();
 					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
@@ -483,14 +596,14 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 
 	fn setup_compositor_global(&mut self) {
 		let inner = Arc::clone(&self.inner);
-		let backend = Arc::clone(&self.backend);
+		let graphics_backend_state = Arc::clone(&self.graphics_backend_state);
 		let compositor_filter = Filter::new(
 			move |(main, _num): (Main<wl_compositor::WlCompositor>, u32), _filter, _dispatch_data| {
 				let inner = Arc::clone(&inner);
-				let backend = Arc::clone(&backend);
+				let graphics_backend_state = Arc::clone(&graphics_backend_state);
 				main.quick_assign(move |_main, request, _dispatch_data| {
 					let inner = Arc::clone(&inner);
-					let backend = Arc::clone(&backend);
+					let graphics_backend_state = Arc::clone(&graphics_backend_state);
 					match request {
 						wl_compositor::Request::CreateRegion { id } => {
 							log::debug!("Got request to create region");
@@ -516,31 +629,25 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 							});
 						}
 						wl_compositor::Request::CreateSurface { id } => {
-							let backend_destructor = Arc::clone(&backend);
+							let graphics_backend_destructor = Arc::clone(&graphics_backend_state);
 							let inner_destructor = Arc::clone(&inner);
-							let surface = &*id;
+							let surface = id.clone();
 							let mut inner_lock = inner.lock().unwrap();
-							inner_lock.surface_tree.add_surface(surface.clone());
 							let surface_resource = surface.as_ref();
-							//let surface_data_args = Arc::new(Mutex::new(SurfaceData::new(None)));
-							let renderer_surface = backend
-								.lock()
-								.unwrap()
-								.render_backend
-								.create_object()
-								.map_err(|e| log::error!("Failed to create backend surface: {}", e))
-								.unwrap();
 							let client_info = inner_lock
 								.client_manager
 								.get_client_info(surface_resource.client().unwrap());
 							drop(inner_lock);
-							let surface_data: Arc<Mutex<SurfaceData<R::ObjectHandle>>> =
-								Arc::new(Mutex::new(SurfaceData::new(client_info, Some(renderer_surface))));
+							let mut graphics_backend_state_lock = graphics_backend_state.lock().unwrap();
+							let surface_renderer_data = graphics_backend_state_lock.renderer.create_surface_renderer_data().unwrap();
+							let surface_data: Arc<Mutex<SurfaceData<G>>> =
+								Arc::new(Mutex::new(SurfaceData::new(client_info, surface_renderer_data)));
 							let surface_data_clone = Arc::clone(&surface_data);
 							surface_resource
 								.user_data()
 								.set_threadsafe(move || Arc::clone(&surface_data_clone));
 							id.quick_assign(move |_main, request: wl_surface::Request, _| {
+								let inner = Arc::clone(&inner);
 								let surface_data = Arc::clone(&surface_data);
 								match request {
 									wl_surface::Request::Destroy => {
@@ -550,14 +657,19 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 										log::debug!("Got wl_surface attach request");
 										let mut surface_data_lock = surface_data.lock().unwrap();
 										// Release the previously attached buffer if it hasn't been committed yet
-										if let Some(old_buffer) = surface_data_lock.attached_buffer.take() {
-											old_buffer.0.release()
+										if let Some(old_buffer) = surface_data_lock.pending_state.attached_buffer.take()
+										{
+											if let Some(old_buffer) = old_buffer {
+												old_buffer.0.release()
+											}
 										};
+										// Attach the new buffer to the surface
 										if let Some(buffer) = buffer {
-											surface_data_lock.attached_buffer = Some((buffer, (x, y)))
+											surface_data_lock.pending_state.attached_buffer =
+												Some(Some((buffer, Point::new(x, y))));
 										} else {
 											// Attaching a null buffer to a surface is equivalent to unmapping it.
-											surface_data_lock.draw = false;
+											surface_data_lock.pending_state.attached_buffer = Some(None);
 										}
 									}
 									wl_surface::Request::Damage { .. } => {
@@ -579,19 +691,28 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 										log::debug!("Got wl_surface set_input_region request");
 									}
 									wl_surface::Request::Commit => {
+										// TODO: relying on the impl of ShmBuffer to ascertain the size of the buffer is probably unsound if the ShmBuffer impl lies.
+										// So that trait should either be unsafe, or Shm should be moved out of the Rendering backend and EasyShm should be made canonical
 										log::debug!("Got wl_surface commit request");
 										let mut surface_data_lock = surface_data.lock().unwrap();
-										// Move the previously attached buffer to the committed buffer state ("commit the buffer")
-										if let Some(attached_buffer) = surface_data_lock.attached_buffer.take() {
-											// Release the previously committed buffer if it's still there (i.e. it hasn't been drawn/rendered/copied to GPU yet)
-											if let Some(old_buffer) =
-												surface_data_lock.committed_buffer.replace(attached_buffer)
-											{
-												old_buffer.0.release();
-											}
-											surface_data_lock.draw = true;
-										} else {
-											log::warn!("A surface was committed without a previously attached buffer");
+										surface_data_lock.commit_pending_state();
+										if let Some(ref committed_buffer) = surface_data_lock.committed_buffer {
+											let buffer_data = committed_buffer
+												.0
+												.as_ref()
+												.user_data()
+												.get::<Synced<G::ShmBuffer>>()
+												.unwrap();
+											let buffer_data_lock = buffer_data.lock().unwrap();
+											let new_size =
+												Size::new(buffer_data_lock.width(), buffer_data_lock.height());
+											drop(buffer_data_lock);
+											drop(surface_data_lock);
+											let mut inner_lock = inner.lock().unwrap();
+											inner_lock
+												.window_manager
+												.manager_impl
+												.handle_surface_resize((*surface).clone(), new_size);
 										}
 									}
 									wl_surface::Request::SetBufferTransform { .. } => {
@@ -611,15 +732,17 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 							id.assign_destructor(Filter::new(
 								move |surface: wl_surface::WlSurface, _filter, _dispatch_data| {
 									log::debug!("Got wl_surface destroy request");
-									let mut backend = backend_destructor.lock().unwrap();
+									let mut graphics_backend_state_lock = graphics_backend_destructor.lock().unwrap();
 									let surface_data = surface
 										.as_ref()
 										.user_data()
-										.get::<Arc<Mutex<SurfaceData<R::ObjectHandle>>>>()
+										.get::<Arc<Mutex<SurfaceData<G>>>>()
 										.unwrap();
-									backend
-										.render_backend
-										.destroy_object(surface_data.lock().unwrap().renderer_data.take().unwrap())
+									graphics_backend_state_lock
+										.renderer
+										.destroy_surface_renderer_data(
+											surface_data.lock().unwrap().renderer_data.take().unwrap(),
+										)
 										.map_err(|e| log::error!("Failed to destroy surface: {}", e))
 										.unwrap();
 									let mut inner = inner_destructor.lock().unwrap();
@@ -662,7 +785,7 @@ impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
 	}
 }
 
-impl<I: InputBackend, R: RenderBackend> Drop for Compositor<I, R> {
+impl<I: InputBackend, G: GraphicsBackend> Drop for Compositor<I, G> {
 	fn drop(&mut self) {
 		log::trace!("Closing wayland socket");
 		fs::remove_file("/run/user/1000/wayland-0").unwrap();
@@ -670,7 +793,9 @@ impl<I: InputBackend, R: RenderBackend> Drop for Compositor<I, R> {
 }
 
 #[derive(Debug, Error)]
-pub enum CompositorError {
+pub enum CompositorError<G: GraphicsBackend + 'static> {
 	#[error("There was an error creating a wayland socket")]
 	SocketError(#[source] io::Error),
+	#[error("Failed to create a render target")]
+	RenderTargetError(#[source] G::Error),
 }

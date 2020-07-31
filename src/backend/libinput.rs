@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::backend::{PointerButton, PointerMotion};
 use crate::{
-	backend::{BackendEvent, InputBackend, KeyPress, RenderBackend},
+	backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress},
 	compositor::Compositor,
 };
 
@@ -22,8 +22,8 @@ pub struct LibinputInputBackend {
 }
 
 impl LibinputInputBackend {
-	pub fn new<I: InputBackend + 'static, R: RenderBackend + 'static>(
-		event_loop_handle: LoopHandle<Compositor<I, R>>,
+	pub fn new<I: InputBackend + 'static, G: GraphicsBackend + 'static>(
+		event_loop_handle: LoopHandle<Compositor<I, G>>,
 	) -> Result<Self, ()> {
 		struct RootLibinputInterface;
 
@@ -59,8 +59,8 @@ impl LibinputInputBackend {
 		let (event_sender, event_receiver) = channel::channel();
 		let event_source = event_loop_handle
 			.insert_source(libinput_evented, move |_event, compositor| {
-				let mut backend = compositor.backend.lock().unwrap();
-				backend
+				let mut input_backend_state = compositor.input_backend_state.lock().unwrap();
+				input_backend_state
 					.input_backend
 					.update()
 					.map_err(|e| log::error!("Failed to update input backend: {}", e))

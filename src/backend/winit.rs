@@ -8,7 +8,7 @@ use winit::{
 	event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::backend::{BackendEvent, InputBackend, KeyPress, PointerMotion};
+use crate::backend::{BackendEvent, InputBackend, KeyPress, PointerButton, PointerMotion};
 use std::sync::Arc;
 
 pub struct WinitInputBackend {
@@ -57,7 +57,7 @@ impl WinitInputBackend {
 							}
 						}
 						if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Space) {
-							if input.state == ElementState::Released && ctrl_pressed {
+							if input.state == ElementState::Pressed && ctrl_pressed {
 								if pointer_grabbed {
 									pointer_grabbed = false;
 									let _ = window
@@ -100,11 +100,29 @@ impl WinitInputBackend {
 							None
 						}
 					}
+					WinitEvent::DeviceEvent {
+						device_id: _device_id,
+						event: winit::event::DeviceEvent::Button { button, state },
+					} => {
+						if pointer_grabbed {
+							Some(BackendEvent::PointerButton(PointerButton {
+								serial: crate::compositor::get_input_serial(),
+								time: start.elapsed().as_millis() as u32,
+								button,
+								state: match state {
+									ElementState::Pressed => wl_pointer::ButtonState::Pressed,
+									ElementState::Released => wl_pointer::ButtonState::Released,
+								},
+							}))
+						} else {
+							None
+						}
+					}
 					_ => None,
 				};
 				if let Some(backend_event) = backend_event {
 					let _ = sender.send(backend_event).map_err(|e| {
-						log::error!("Failed to send event to backend: {}", e);
+						panic!("Failed to send event to backend: {}", e);
 					});
 				}
 			},

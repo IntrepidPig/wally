@@ -1,28 +1,16 @@
-use std::{
-	os::unix::io::RawFd,
-	sync::{Arc, Mutex},
-};
+use std::convert::TryFrom;
+use std::sync::{Arc, Mutex};
 
 use wayland_server::{protocol::*, Filter, Global, Main};
 
 use crate::{
-	backend::{InputBackend, RenderBackend},
+	backend::{GraphicsBackend, InputBackend},
 	compositor::Compositor,
 };
-use std::sync::MutexGuard;
 
-#[derive(Debug)]
-pub struct ShmPool {
-	pub ptr: *mut u8,
-	pub fd: RawFd,
-	pub size: usize,
-}
-
-unsafe impl Send for ShmPool {}
-
-#[derive(Debug)]
-pub struct ShmBuffer {
-	pub pool: Arc<Mutex<ShmPool>>,
+/* #[derive(Debug)]
+pub struct ShmBuffer<G: GraphicsBackend> {
+	pub pool: Arc<Mutex<G::ShmPool>>,
 	pub offset: usize,
 	pub width: usize,
 	pub height: usize,
@@ -30,67 +18,60 @@ pub struct ShmBuffer {
 	pub format: wl_shm::Format,
 }
 
-impl ShmBuffer {
+impl<G: GraphicsBackend> ShmBuffer<G> {
 	pub fn get_size(&self) -> usize {
 		self.stride * self.height
 	}
 
-	pub unsafe fn get_ptr(&self) -> (*mut u8, MutexGuard<ShmPool>) {
+	/* pub unsafe fn get_ptr(&self) -> (*mut u8, MutexGuard<G::ShmPool>) {
 		let pool_lock = self.pool.lock().unwrap();
-		let ptr = (pool_lock.ptr as *mut u8).offset(self.offset as isize) as *mut _;
+		let ptr = (pool_lock.ptr() as *mut u8).offset(self.offset as isize) as *mut _;
 		(ptr, pool_lock)
 	}
 
-	pub unsafe fn as_slice<'a>(&self) -> (&'a [u8], MutexGuard<ShmPool>) {
+	pub unsafe fn as_slice<'a>(&self) -> (&'a [u8], MutexGuard<G::ShmPool>) {
 		let (ptr, guard) = self.get_ptr();
-		assert!(self.offset + self.get_size() <= guard.size);
+		assert!(self.offset + self.get_size() <= guard.size());
 		let slice = std::slice::from_raw_parts(ptr as *mut _ as *const _, self.get_size());
 		(std::mem::transmute(slice), guard)
-	}
-}
+	} */
+} */
 
-impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
+impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub(crate) fn setup_shm_global(&mut self) -> Global<wl_shm::WlShm> {
+		let graphics_backend_state = Arc::clone(&self.graphics_backend_state);
 		let shm_filter = Filter::new(
 			move |(main, _num): (Main<wl_shm::WlShm>, u32), _filter, _dispatch_data| {
+				let graphics_backend_state = Arc::clone(&graphics_backend_state);
 				let shm_interface = &*main;
 				shm_interface.format(wl_shm::Format::Argb8888);
 				shm_interface.format(wl_shm::Format::Xrgb8888);
 				main.quick_assign(move |_main, request, _dispatch_data| {
+					let graphics_backend_state = Arc::clone(&graphics_backend_state);
 				match request {
 					wl_shm::Request::CreatePool { id, fd, size } => {
-						log::debug!("Got request to create shm pool with fd {} and size {}", fd, size);
-						let ptr: *mut u8 = unsafe {
-							nix::sys::mman::mmap(
-								std::ptr::null_mut(),
-								size as usize,
-								nix::sys::mman::ProtFlags::PROT_READ,
-								nix::sys::mman::MapFlags::MAP_SHARED,
-								fd,
-								0,
-							).expect("Failed to mmap shared memory") as *mut u8
-						};
-						let shm_pool = Arc::new(Mutex::new(ShmPool {
-							ptr,
-							fd,
-							size: size as usize,
-						}));
-						let shm_pool_clone = Arc::clone(&shm_pool);
-						id.as_ref().user_data().set_threadsafe(move || shm_pool_clone);
+						log::trace!("Got request to create shm pool with fd {} and size {}", fd, size);
+						let mut graphics_backend_state_lock = graphics_backend_state.lock().unwrap();
+						let shm_pool = graphics_backend_state_lock.renderer.create_shm_pool(fd, size as usize)
+							.map_err(|e| log::error!("Failed to create shm pool: {}", e))
+							.unwrap();
+						drop(graphics_backend_state_lock);
+						let shm_pool = Arc::new(Mutex::new(shm_pool));
 						id.quick_assign(move |_main: Main<wl_shm_pool::WlShmPool>, request: wl_shm_pool::Request, _| {
+							let graphics_backend_state = Arc::clone(&graphics_backend_state);
 							let shm_pool = Arc::clone(&shm_pool);
 							match request {
 								wl_shm_pool::Request::CreateBuffer { id, offset, width, height, stride, format } => {
 									log::debug!("Got request to create shm buffer: offset {}, width {}, height {}, stride {}, format {:?}", offset, width, height, stride, format);
 									// TODO this doesn't need to be in a Mutex I'm pretty sure because it can't be changed
-									let shm_buffer = Arc::new(Mutex::new(ShmBuffer {
-										pool: Arc::clone(&shm_pool),
-										offset: offset as usize,
-										width: width as usize,
-										height: height as usize,
-										stride: stride as usize,
-										format,
-									}));
+									let mut graphics_backend_state_lock = graphics_backend_state.lock().unwrap();
+									let mut shm_pool_lock = shm_pool.lock().unwrap();
+									let offset = usize::try_from(offset).unwrap();
+									let width = u32::try_from(width).unwrap();
+									let height = u32::try_from(height).unwrap();
+									let stride = u32::try_from(stride).unwrap();
+									let shm_buffer: G::ShmBuffer = graphics_backend_state_lock.renderer.create_shm_buffer(&mut *shm_pool_lock, offset, width, height, stride, format).unwrap();
+									let shm_buffer = Arc::new(Mutex::new(shm_buffer));
 									id.as_ref().user_data().set_threadsafe(|| Arc::clone(&shm_buffer));
 									id.quick_assign(|_main: Main<wl_buffer::WlBuffer>, request: wl_buffer::Request, _dispatch_data| {
 										match request {
@@ -108,21 +89,9 @@ impl<I: InputBackend, R: RenderBackend> Compositor<I, R> {
 								},
 								wl_shm_pool::Request::Resize { size } => {
 									log::debug!("Got request to resize shm pool to size {}", size);
-									unsafe {
-										let mut pool = shm_pool.lock().unwrap();
-										use nix::sys::mman;
-										mman::munmap(pool.ptr as *mut _, pool.size).expect("Failed to unmap shared memory");
-										let new_addr = mman::mmap(
-											std::ptr::null_mut(),
-											size as usize,
-											nix::sys::mman::ProtFlags::PROT_READ,
-											nix::sys::mman::MapFlags::MAP_SHARED,
-											pool.fd,
-											0,
-										).expect("Failed to remap shared memory") as *mut _;
-										pool.ptr = new_addr;
-										pool.size = size as usize;
-									}
+									let mut graphics_backend_state_lock = graphics_backend_state.lock().unwrap();
+									let mut shm_pool_lock = shm_pool.lock().unwrap();
+									graphics_backend_state_lock.renderer.resize_shm_pool(&mut *shm_pool_lock, size as usize).unwrap();
 								},
 								_ => {
 									log::warn!("Got unknown request for wl_shm_pool");

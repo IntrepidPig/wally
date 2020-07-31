@@ -7,7 +7,7 @@ use wayland_server::{protocol::*, Filter, Main};
 use xkbcommon::xkb;
 
 use crate::{
-	backend::{InputBackend, RenderBackend},
+	backend::{GraphicsBackend, InputBackend},
 	compositor::Compositor,
 };
 
@@ -27,6 +27,7 @@ impl KeyboardData {
 		let keymap_string = keymap.get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1);
 		let mut tmp = tempfile::tempfile().unwrap();
 		use std::io::Write;
+		println!("{}", keymap_string);
 		tmp.write_all(keymap_string.as_bytes()).unwrap();
 		tmp.flush().unwrap();
 		let fd = tmp.as_raw_fd();
@@ -40,7 +41,7 @@ impl KeyboardData {
 	}
 }
 
-impl<I: InputBackend + 'static, R: RenderBackend + 'static> Compositor<I, R> {
+impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub fn setup_seat_global(&mut self) {
 		let inner = Arc::clone(&self.inner);
 		let seat_filter = Filter::new(

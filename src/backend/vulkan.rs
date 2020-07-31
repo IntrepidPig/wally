@@ -1,235 +1,339 @@
 use std::{
 	fmt,
+	os::unix::io::RawFd,
 	path::Path,
-	sync::{Arc, Mutex},
 };
 
-use ash::{version::DeviceV1_0, vk, Device};
+use festus::{
+	present::PresentBackend,
+	geometry::*,
+	renderer::{
+		self, Renderer, TextureSource, VulkanTextureData,
+		texture::{BufferTextureSource},
+	},
+	rk::{
+		ash::{version::DeviceV1_0, vk},
+		Device,
+	},
+};
 use thiserror::Error;
 use wayland_server::protocol::*;
 
 use crate::{
-	backend::RenderBackend,
-	compositor::{
-		role::Role,
-		shm::ShmBuffer,
-		surface::{SurfaceData, SurfaceTree},
-		xdg::XdgToplevelData,
+	backend::{
+		easy_shm::{EasyShmBuffer, EasyShmPool},
+		GraphicsBackend, Vertex,
 	},
-	renderer::{self, present::PresentBackend, Mvp, ObjectHandle, Renderer, TextureData, TextureSource},
 };
+use super::RgbaInfo;
 
-pub struct VulkanRenderBackend<P: PresentBackend> {
+pub struct VulkanGraphicsBackend<P: PresentBackend> {
 	renderer: Renderer,
 	present_backend: P,
-	cursor: ObjectHandle,
 }
 
-impl<P: PresentBackend> VulkanRenderBackend<P> {
-	pub fn new(mut renderer: Renderer, present_backend: P) -> Self {
-		unsafe {
-			let cursor_texture = TextureData::create_from_source(
-				&renderer.device,
-				renderer.queue,
-				renderer.command_pool,
-				renderer.device_memory_properties,
-				ImagePathTextureSource::new(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/left_ptr_000.png")),
-			)
-			.unwrap();
-
-			let cursor = renderer.create_object_with_texture(cursor_texture).unwrap();
-
-			Self {
-				renderer,
-				present_backend,
-				cursor,
-			}
+impl<P: PresentBackend> VulkanGraphicsBackend<P> {
+	pub fn new(renderer: Renderer, present_backend: P) -> Self {
+		Self {
+			renderer,
+			present_backend,
 		}
 	}
 }
 
-impl<P: PresentBackend> fmt::Debug for VulkanRenderBackend<P> {
+impl<P: PresentBackend> fmt::Debug for VulkanGraphicsBackend<P> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.debug_struct("VulkanRenderBackend")
+		f.debug_struct("VulkanGraphicsBackend")
 			.field("renderer", &"<renderer>")
 			.field("present_backend", &"<present_backend>")
-			.field("cursor", &self.cursor)
 			.finish()
 	}
 }
 
-#[derive(Debug)]
-pub struct VulkanSurfaceData {
-	object_handle: ObjectHandle,
-}
-
 #[derive(Debug, Error)]
-pub enum VulkanRenderBackendError {
+pub enum VulkanGraphicsBackendError {
 	#[error("An unknown error occurred in the vulkan render backend")]
 	Unknown,
+	#[error("Failed to import shared memory (easy_shm) file descriptor: {0}")]
+	ShmImportFailed(nix::Error),
+	#[error("Shared memory pool (easy_shm) resize failed: {0}")]
+	ShmResizeFailed(nix::Error),
+	#[error("Vulkan error: {0}")]
+	VulkanError(vk::Result),
 }
 
-impl<P: PresentBackend> RenderBackend for VulkanRenderBackend<P> {
-	type Error = VulkanRenderBackendError;
-	type ShmPool = ();
-	type ObjectHandle = VulkanSurfaceData;
+impl<P: PresentBackend + 'static> GraphicsBackend for VulkanGraphicsBackend<P> {
+	type Error = VulkanGraphicsBackendError;
+
+	type ShmPool = EasyShmPool;
+	type ShmBuffer = EasyShmBuffer;
+
+	type VertexBufferHandle = festus::renderer::VertexBufferHandle;
+	type MvpBufferHandle = festus::renderer::MvpBufferHandle;
+
+	type RenderTargetHandle = festus::renderer::VulkanRenderTargetHandle;
+	type TextureHandle = festus::renderer::TextureHandle;
 
 	fn update(&mut self) -> Result<(), Self::Error> {
 		Ok(())
 	}
 
-	fn create_object(&mut self) -> Result<Self::ObjectHandle, Self::Error> {
+	fn create_shm_pool(&mut self, fd: RawFd, size: usize) -> Result<Self::ShmPool, Self::Error> {
+		unsafe { EasyShmPool::create(fd, size).map_err(|e| VulkanGraphicsBackendError::ShmImportFailed(e)) }
+	}
+
+	fn resize_shm_pool(&mut self, pool: &mut Self::ShmPool, new_size: usize) -> Result<(), Self::Error> {
 		unsafe {
-			let handle = self
-				.renderer
-				.create_object_with(|object| {
-					let mvp = Mvp::new_surface((0, 0), (1, 1), (1, 1));
-					object.update_mvp(mvp).unwrap();
-				})
-				.unwrap();
-			let surface_data = Self::ObjectHandle { object_handle: handle };
-			Ok(surface_data)
+			pool.resize(new_size).map_err(|e| {
+				log::error!("An error occurred resizing a shm pool: {}", e);
+				VulkanGraphicsBackendError::ShmResizeFailed(e)
+			})
 		}
 	}
 
-	fn destroy_object(&mut self, object_handle: Self::ObjectHandle) -> Result<(), Self::Error> {
+	fn create_shm_buffer(
+		&mut self,
+		shm_pool: &mut Self::ShmPool,
+		offset: usize,
+		width: u32,
+		height: u32,
+		stride: u32,
+		format: wl_shm::Format,
+	) -> Result<Self::ShmBuffer, Self::Error> {
 		unsafe {
-			self.renderer.delete_object(object_handle.object_handle);
+			Ok(EasyShmBuffer {
+				pool: shm_pool.duplicate(), // TODO this is probably unsound, I was tired when I wrote it
+				offset,
+				width,
+				height,
+				stride,
+				format,
+			})
 		}
-
-		Ok(())
+	}
+	
+	fn create_texture_from_rgba(&mut self, rgba: RgbaInfo) -> Result<Self::TextureHandle, Self::Error> {
+		unsafe {
+			self.renderer.create_texture(BufferTextureSource {
+				width: rgba.width,
+				height: rgba.height,
+				format: vk::Format::R8G8B8A8_UNORM,
+				buffer: rgba.data,
+			}).map_err(|_e| VulkanGraphicsBackendError::Unknown)
+		}
 	}
 
-	fn render_tree(&mut self, tree: &SurfaceTree<Self>) -> Result<(), Self::Error> {
+	fn create_texture_from_shm_buffer(
+		&mut self,
+		shm_buffer: &Self::ShmBuffer,
+	) -> Result<Self::TextureHandle, Self::Error> {
 		unsafe {
-			let device = &self.renderer.device.clone();
-			let queue = self.renderer.queue;
-			let command_pool = self.renderer.command_pool;
-			let device_memory_properties = self.renderer.device_memory_properties;
-			let sampler = self.renderer.sampler;
-			let current_size = self.present_backend.get_current_size();
-			let renderer = &mut self.renderer;
-			let present_backend = &mut self.present_backend;
-			renderer.begin_render_pass(present_backend).map_err(|_| VulkanRenderBackendError::Unknown)?;
-			for surface in tree.surfaces_ascending() {
-				let surface_data = surface
-					.as_ref()
-					.user_data()
-					.get::<Arc<Mutex<SurfaceData<Self::ObjectHandle>>>>()
-					.unwrap();
-				let surface_data_lock = &mut *surface_data.lock().unwrap();
-				let object_handle = surface_data_lock.renderer_data.as_ref().unwrap().object_handle;
-				let object = match renderer.get_object_mut(object_handle) {
-					Some(obj) => obj,
-					None => {
-						log::warn!("Vulkan object referenced by surface was destroyed");
-						continue;
-					}
-				};
-				if let Some(committed_buffer) = surface_data_lock.committed_buffer.take() {
-					let buffer_data = committed_buffer
-						.0
-						.as_ref()
-						.user_data()
-						.get::<Arc<Mutex<ShmBuffer>>>()
-						.unwrap();
-					let buffer_data_lock = &mut *buffer_data.lock().unwrap();
-					let texture = TextureData::create_from_source(
-						&device,
-						queue,
-						command_pool,
-						device_memory_properties,
-						ShmBufferTextureSource::new(buffer_data_lock),
-					)
-					.unwrap();
-					object.replace_texture(device, sampler, texture).unwrap();
-					committed_buffer.0.release();
-				}
-				if let Some(role) = surface_data_lock.role.as_ref() {
-					match role {
-						Role::XdgToplevel(toplevel) => {
-							let toplevel_data: &Arc<Mutex<XdgToplevelData>> = toplevel
-								.as_ref()
-								.user_data()
-								.get::<Arc<Mutex<XdgToplevelData>>>()
-								.unwrap();
-							let toplevel_data_lock = toplevel_data.lock().unwrap();
-							object
-								.update_mvp(
-									Mvp::new_surface(toplevel_data_lock.pos, toplevel_data_lock.size, current_size),
-								)
-								.unwrap();
-							renderer.draw_object(object_handle).map_err(|_| VulkanRenderBackendError::Unknown)?;
-						}
-						Role::Cursor(pointer_state) => {
-							let pointer_state = &mut *pointer_state.lock().unwrap();
-							object
-								.update_mvp(
-									Mvp::new_surface(
-										(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
-										(24, 24), // TODO
-										current_size,
-									),
-								)
-								.unwrap();
-							renderer.draw_object(object_handle).map_err(|_| VulkanRenderBackendError::Unknown)?;
-						}
-					}
-				}
-				surface_data_lock.callback.as_ref().map(|callback| callback.done(42));
-			}
-			let pointer_state = tree.pointer.lock().unwrap();
-			//let default_cursor_object = self.renderer.get_object_mut(pointer_state.default.object_handle).unwrap();
-			let default_cursor_object = renderer.get_object_mut(self.cursor).unwrap();
-			if pointer_state.custom_cursor.is_none() {
-				default_cursor_object
-					.update_mvp(
-						Mvp::new_surface(
-							(pointer_state.pos.0 as i32, pointer_state.pos.1 as i32),
-							(24, 24), // TODO
-							current_size,
-						),
-					)
-					.unwrap();
-				renderer.draw_object(self.cursor).map_err(|_| VulkanRenderBackendError::Unknown)?;
-			}
-			
-			renderer.end_render_pass().map_err(|_| VulkanRenderBackendError::Unknown)?;
-			renderer.submit_command_buffer().map_err(|_| VulkanRenderBackendError::Unknown)?;
-			present_backend.present(renderer).map_err(|_e| {
-				log::error!("Presenting failed");
-				VulkanRenderBackendError::Unknown
+			let texture_source = EasyShmBufferTextureSource::new(shm_buffer);
+			let texture_handle = self.renderer.create_texture(texture_source).map_err(|_e| {
+				log::error!("An unknown error occurred while creating a texture");
+				VulkanGraphicsBackendError::VulkanError(vk::Result::ERROR_UNKNOWN)
 			})?;
+			Ok(texture_handle)
 		}
+	}
 
+	fn create_vertex_buffer(
+		&mut self,
+		vertices: &[Vertex],
+		indices: &[u32],
+	) -> Result<Self::VertexBufferHandle, Self::Error> {
+		let vertices = vertices
+			.iter()
+			.map(|vertex| festus::renderer::Vertex {
+				pos: festus::math::Point3::new(vertex.pos[0], vertex.pos[1], vertex.pos[2]),
+				col: festus::math::Vec4::new(1.0, 0.0, 0.0, 1.0),
+				tex: festus::math::Point2::new(vertex.uv[0], vertex.uv[1]),
+			})
+			.collect::<Vec<_>>();
+		unsafe {
+			self.renderer.create_vertex_buffer(&vertices, indices).map_err(|_e| {
+				log::error!("An unknown error occurred creating a vertex buffer");
+				VulkanGraphicsBackendError::VulkanError(vk::Result::ERROR_UNKNOWN)
+			})
+		}
+	}
+
+	fn create_mvp_buffer(&mut self, mvp: [[[f32; 4]; 4]; 3]) -> Result<Self::MvpBufferHandle, Self::Error> {
+		let mvp = renderer::Mvp::from(mvp);
+		unsafe {
+			self.renderer.create_mvp_buffer(mvp).map_err(|_e| {
+				log::error!("An unknown error occurred creating an MVP buffer");
+				VulkanGraphicsBackendError::VulkanError(vk::Result::ERROR_UNKNOWN)
+			})
+		}
+	}
+
+	fn map_mvp_buffer(&mut self, handle: Self::MvpBufferHandle) -> Option<&mut [[[f32; 4]; 4]; 3]> {
+		unsafe {
+			self.renderer
+				.resources
+				.get_mvp_buffer(handle)
+				.map(|mvp_buffer| &mut *(mvp_buffer.mvp_buffer_memory_map as *mut [[[f32; 4]; 4]; 3]))
+		}
+	}
+
+	// A lot of assumptions are made by this function right now.
+	fn create_texture(&mut self, size: Size) -> Result<Self::TextureHandle, Self::Error> {
+		unsafe {
+			self.renderer.create_texture(UninitTextureSource { size }).map_err(|_| {
+				log::error!("An unknown error occurred creating a texture");
+				VulkanGraphicsBackendError::Unknown
+			})
+		}
+	}
+
+	fn create_render_target(&mut self, size: Size) -> Result<Self::RenderTargetHandle, Self::Error> {
+		unsafe {
+			self.renderer.create_render_target(size).map_err(|_e| {
+				log::error!("An unknown error occurred while creating a render target");
+				VulkanGraphicsBackendError::Unknown
+			})
+		}
+	}
+
+	unsafe fn begin_render_pass(&mut self, target: Self::RenderTargetHandle) -> Result<(), Self::Error> {
+		self.renderer.begin_render_pass(target).map_err(|_e| {
+			log::error!("An unknown error occurred while beginning the render pass");
+			VulkanGraphicsBackendError::Unknown
+		})?;
 		Ok(())
 	}
 
-	fn get_size(&self) -> (u32, u32) {
+	unsafe fn draw(
+		&mut self,
+		vertex_buffer: Self::VertexBufferHandle,
+		texture: Self::TextureHandle,
+		mvp: Self::MvpBufferHandle,
+	) -> Result<(), Self::Error> {
+		self.renderer.draw(vertex_buffer, texture, mvp).map_err(|_e| {
+			log::error!("An unknown error occurred while drawing a surface");
+			VulkanGraphicsBackendError::Unknown
+		})?;
+		Ok(())
+	}
+
+	unsafe fn end_render_pass(&mut self, target: Self::RenderTargetHandle) -> Result<(), Self::Error> {
+		self.renderer.end_render_pass().map_err(|_e| {
+			log::error!("An unknown error occurred while ending the render pass");
+			VulkanGraphicsBackendError::Unknown
+		})?;
+		self.renderer.submit_command_buffer(target).map_err(|_e| {
+			log::error!("An unknown error occurred while submitting the command buffer");
+			VulkanGraphicsBackendError::Unknown
+		})?;
+		Ok(())
+	}
+
+	fn present_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error> {
+		unsafe {
+			self.present_backend.present(&mut self.renderer, handle).map_err(|_e| {
+				log::error!("An unknown error occurred while presenting a render result");
+				VulkanGraphicsBackendError::Unknown
+			})
+		}
+	}
+	
+	fn destroy_texture(&mut self, handle: Self::TextureHandle) -> Result<(), Self::Error> {
+		unsafe { self.renderer.destroy_texture(handle); }
+		Ok(())
+	}
+	
+	fn destroy_vertex_buffer(&mut self, handle: Self::VertexBufferHandle) -> Result<(), Self::Error> {
+		unsafe { self.renderer.destroy_vertex_buffer(handle); }
+		Ok(())
+	}
+	
+	fn destroy_mvp_buffer(&mut self, handle: Self::MvpBufferHandle) -> Result<(), Self::Error> {
+		unsafe { self.renderer.destroy_mvp_buffer(handle); }
+		Ok(())
+	}
+	
+	fn destroy_render_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error> {
+		unsafe { self.renderer.destroy_render_target(handle); }
+		Ok(())
+	}
+
+	fn get_size(&self) -> Size {
 		unsafe { self.present_backend.get_current_size() }
 	}
 }
 
-pub struct ShmBufferTextureSource<'a> {
-	buffer: &'a ShmBuffer,
+pub struct UninitTextureSource {
+	size: Size,
 }
 
-impl<'a> ShmBufferTextureSource<'a> {
-	pub fn new(buffer: &'a ShmBuffer) -> Self {
-		Self { buffer }
-	}
-}
-
-impl<'a> renderer::TextureSource for ShmBufferTextureSource<'a> {
+impl renderer::TextureSource for UninitTextureSource {
 	unsafe fn create_texture(
 		self,
 		device: &Device,
 		queue: vk::Queue,
 		command_pool: vk::CommandPool,
 		device_memory_properties: vk::PhysicalDeviceMemoryProperties,
-	) -> Result<TextureData, ()> {
+	) -> Result<VulkanTextureData, ()> {
+		let format = vk::Format::R8G8B8A8_UNORM;
+		let image = renderer::create_image(
+			device,
+			self.size.width,
+			self.size.height,
+			format,
+			vk::ImageTiling::OPTIMAL,
+			vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+		)?;
+		let image_memory_requirements = device.get_image_memory_requirements(image);
+		let image_memory = renderer::allocate_memory(
+			device,
+			device_memory_properties,
+			image_memory_requirements.size,
+			vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+		)?;
+		renderer::bind_image_memory(device, image, image_memory)?;
+		renderer::transition_image_layout(
+			device,
+			queue,
+			command_pool,
+			image,
+			vk::ImageLayout::UNDEFINED,
+			vk::ImageLayout::GENERAL,
+		)?;
+
+		let image_view = renderer::create_image_view(device, image, format, vk::ImageAspectFlags::COLOR)?;
+
+		let texture_data = VulkanTextureData {
+			image,
+			image_view,
+			image_memory,
+			size: self.size,
+		};
+
+		Ok(texture_data)
+	}
+}
+
+pub struct EasyShmBufferTextureSource<'a> {
+	buffer: &'a EasyShmBuffer,
+}
+
+impl<'a> EasyShmBufferTextureSource<'a> {
+	pub fn new(buffer: &'a EasyShmBuffer) -> Self {
+		Self { buffer }
+	}
+}
+
+impl<'a> renderer::TextureSource for EasyShmBufferTextureSource<'a> {
+	unsafe fn create_texture(
+		self,
+		device: &Device,
+		queue: vk::Queue,
+		command_pool: vk::CommandPool,
+		device_memory_properties: vk::PhysicalDeviceMemoryProperties,
+	) -> Result<VulkanTextureData, ()> {
 		let vk_format = wl_format_to_vk_format(self.buffer.format);
-		let (slice, guard) = self.buffer.as_slice();
+		let slice = self.buffer.as_slice();
 		log::debug!("Buffer size: {}", slice.len());
 		let (staging_buffer, staging_buffer_memory) = renderer::make_buffer(
 			device,
@@ -237,7 +341,6 @@ impl<'a> renderer::TextureSource for ShmBufferTextureSource<'a> {
 			slice,
 			vk::BufferUsageFlags::TRANSFER_SRC,
 		)?;
-		drop(guard);
 		let image = renderer::create_image(
 			device,
 			self.buffer.width as u32,
@@ -304,10 +407,11 @@ impl<'a> renderer::TextureSource for ShmBufferTextureSource<'a> {
 
 		let image_view = renderer::create_image_view(device, image, vk_format, vk::ImageAspectFlags::COLOR)?;
 
-		Ok(TextureData {
+		Ok(VulkanTextureData {
 			image,
 			image_view,
 			image_memory,
+			size: Size::new(self.buffer.width as u32, self.buffer.height as u32),
 		})
 	}
 }
@@ -329,7 +433,7 @@ impl<'a> TextureSource for ImagePathTextureSource<'a> {
 		queue: vk::Queue,
 		command_pool: vk::CommandPool,
 		device_memory_properties: vk::PhysicalDeviceMemoryProperties,
-	) -> Result<TextureData, ()> {
+	) -> Result<VulkanTextureData, ()> {
 		let vk_format = vk::Format::R8G8B8A8_UNORM;
 		let load_image = image::open(self.path)
 			.map_err(|e| log::error!("Failed to open image at path '{}': {}", self.path.display(), e))?;
@@ -407,10 +511,11 @@ impl<'a> TextureSource for ImagePathTextureSource<'a> {
 
 		let image_view = renderer::create_image_view(device, image, vk_format, vk::ImageAspectFlags::COLOR)?;
 
-		Ok(TextureData {
+		Ok(VulkanTextureData {
 			image,
 			image_view,
 			image_memory,
+			size: Size::new(dims.0, dims.1),
 		})
 	}
 }
