@@ -9,19 +9,16 @@ use calloop::EventLoop;
 use structopt::StructOpt;
 use wl_common::{
 	protocol::Interface,
-	resource::Resource,
 };
-use wl_protocol::wl::*;
+use wl_server::{
+	server::Server,
+	proto::wl::*,
+};
 use xdg_shell_protocol::xdg_shell::*;
 
 use crate::{
 	backend::{vulkan::VulkanGraphicsBackend, winit::WinitInputBackend},
 	//compositor::prelude::*,
-	wl::{
-		server::{
-			Server,
-		},
-	}
 };
 use festus::{geometry::Size, present::{
 	drm::DrmPresentBackend,
@@ -35,7 +32,7 @@ pub mod compositor;
 //pub mod logind;
 pub mod behavior;
 pub mod renderer;
-pub mod wl;
+//pub mod wl;
 
 #[derive(StructOpt)]
 #[structopt(name = "wally", about = "A wayland compositor")]
