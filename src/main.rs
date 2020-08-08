@@ -1,20 +1,8 @@
-use std::{
-	os::unix::io::{RawFd, AsRawFd},
-};
-
 use calloop::EventLoop;
 /*use dbus::{
 	arg::{RefArg},
 };*/
 use structopt::StructOpt;
-use wl_common::{
-	protocol::Interface,
-};
-use wl_server::{
-	server::Server,
-	proto::wl::*,
-};
-use xdg_shell_protocol::xdg_shell::*;
 
 use crate::{
 	backend::{vulkan::VulkanGraphicsBackend, winit::WinitInputBackend},
@@ -49,88 +37,8 @@ pub struct Opts {
 	debug: bool,
 }
 
-fn test_server() {
-	let mut server = Server::new().unwrap();
-	//let mut objects_map = std::collections::HashMap::new();
-	//objects_map.insert(1, Resource::<WlDisplay>::new());
-
-	//generate_api();return;
-	let compositor_global = server.data.register_new_global::<WlCompositor>().unwrap();
-	let shm_global = server.data.register_new_global::<WlShm>().unwrap();
-	let xdg_wm_base_global = server.data.register_new_global::<XdgWmBase>().unwrap();
-	server.implementation_ref.register_universal_handler::<WlDisplay, _>(move |server, impl_ref, resource, request| {
-		match request {
-			WlDisplayRequest::Sync(sync) => {
-				let serial = server.next_serial();
-				server.send_event(&sync.callback, WlCallbackEvent::Done(wl_callback::DoneEvent {
-					callback_data: serial,
-				})).unwrap();
-			},
-			WlDisplayRequest::GetRegistry(get_registry) => {
-				impl_ref.register_handler(&get_registry.registry, |server, impl_ref, resource, request| {
-					//log::info!("Got individual handler callback for resource {:?}: {:?}", resource, request);
-				});
-
-				server.advertise_global(compositor_global, &get_registry.registry);
-				server.advertise_global(shm_global, &get_registry.registry);
-				server.advertise_global(xdg_wm_base_global, &get_registry.registry);
-			},
-		}
-	});
-	server.implementation_ref.register_universal_handler::<WlRegistry, _>(|server, impl_ref, resource, request| {
-		match request {
-			WlRegistryRequest::Bind(bind) => {
-				//let object_info = server.resources.get_object_info_mut(bind.id);
-				let global = server.resources.find_global_handle_untyped(|info| info.name == bind.name).unwrap();
-				let global_interface = &server.resources.get_global_info_untyped(global).unwrap().interface;
-				match &*global_interface.name {
-					WlCompositor::NAME => {
-						//dbg!(server);
-						//let _resource: Resource<WlCompositor> = server.bind_global(global, &bind.id).unwrap();
-						//let _resource = bind.id.downcast::<WlCompositor>();
-					},
-					WlShm::NAME => {
-						log::warn!("Got shm bind");
-						/* let shm: Resource<WlShm> = server.bind_global(global, &bind.id).unwrap();
-						server.send_event(&shm, WlShmEvent::Format(wl_shm::FormatEvent {
-							format: wl_shm::Format::Argb8888,
-						})).unwrap();
-						server.send_event(&shm, WlShmEvent::Format(wl_shm::FormatEvent {
-							format: wl_shm::Format::Xrgb8888,
-						})).unwrap(); */
-					},
-					u => {
-						log::error!("Unhandled global bind for global '{}'", u);
-					}
-				}
-			},
-		}
-	});
-	server.implementation_ref.register_universal_handler::<WlCompositor, _>(|server, impl_ref, resource, request| {
-		match request {
-			WlCompositorRequest::CreateSurface(create_surface) => {
-				impl_ref.register_handler(&create_surface.id, |server, impl_ref, resource, request| {
-					log::info!("Got surface request: {:?}", request);
-				})
-			},
-			WlCompositorRequest::CreateRegion(create_region) => {
-
-			},
-		}
-	});
-	server.implementation_ref.register_universal_handler::<WlShm, _>(|server, impl_ref, resource, request| {
-		log::warn!("FJHASOJUHIOLKAQWJHDSNAI");
-		dbg!(resource);
-		dbg!(request);
-	});
-	server.run().unwrap();
-}
-
 fn main() {
 	setup_logging();
-	
-	test_server();
-	return;
 
 	let event_loop = EventLoop::<()>::new().expect("Failed to create event loop");
 	let opts = Opts::from_args();
