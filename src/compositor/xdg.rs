@@ -170,11 +170,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 												.set_threadsafe(move || xdg_toplevel_data_clone);
 
 											// Now that the surface has been assigned as a toplevel we assign the role to the wl_surface and the xdg_surface
-											let surface_data: &Arc<Mutex<SurfaceData<G>>> = surface
-												.as_ref()
-												.user_data()
-												.get::<Arc<Mutex<SurfaceData<G>>>>()
-												.unwrap();
+											let surface_data = surface.get_synced::<SurfaceData<G>>();
 											let mut surface_data_lock = surface_data.lock().unwrap();
 											surface_data_lock.role = Some(Role::XdgSurface(xdg_surface.clone()));
 											drop(surface_data_lock);

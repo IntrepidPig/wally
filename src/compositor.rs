@@ -14,7 +14,7 @@ use calloop::{
 };
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use wayland_server::{protocol::*, Client, Display, Filter, Main};
+use wayland_server::{protocol::*, Interface, Resource, Client, Display, Filter, Main};
 
 use crate::{
 	backend::{BackendEvent, GraphicsBackend, InputBackend, ShmBuffer},
@@ -44,11 +44,37 @@ pub mod prelude {
 
 	pub use crate::{
 		backend::{BackendEvent, GraphicsBackend, InputBackend},
-		compositor::{client::ClientInfo, role::Role, surface::SurfaceData, PointerState, Synced},
+		compositor::{UserDataAccess, client::ClientInfo, role::Role, surface::SurfaceData, PointerState, Synced},
 	};
 }
 
 pub type Synced<T> = Arc<Mutex<T>>;
+
+/// Helper extension trait to clean up the access of UserData of a known type
+pub trait UserDataAccess {
+	fn get<T: 'static>(&self) -> &T;
+	fn try_get<T: 'static>(&self) -> Option<&T>;
+	fn try_get_synced<T: 'static>(&self) -> Option<Synced<T>>;
+	fn get_synced<T: 'static>(&self) -> Synced<T>;
+}
+
+impl<I> UserDataAccess for I where I: Interface + AsRef<Resource<I>> + From<Resource<I>> {
+	fn get<T: 'static>(&self) -> &T {
+		self.try_get().unwrap()
+	}
+
+	fn try_get<T: 'static>(&self) -> Option<&T> {
+		self.as_ref().user_data().get::<T>()
+	}
+
+	fn try_get_synced<T: 'static>(&self) -> Option<Synced<T>> {
+		self.try_get::<Synced<T>>().map(Synced::clone)
+	}
+
+	fn get_synced<T: 'static>(&self) -> Synced<T> {
+		self.try_get_synced().unwrap()
+	}
+}
 
 pub(crate) static INPUT_SERIAL: AtomicU32 = AtomicU32::new(1);
 pub(crate) static PROFILE_OUTPUT: AtomicBool = AtomicBool::new(false);
@@ -280,23 +306,22 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 		println!("Surfaces:");
 		for (i, surface) in inner.window_manager.manager_impl.surfaces_ascending().enumerate() {
 			println!("\tSurface@{} {}", surface.as_ref().id(), i);
-			if let Some(surface_data_ref) = surface.as_ref().user_data().get::<Arc<Mutex<SurfaceData<G>>>>() {
-				let surface_data_lock = surface_data_ref.lock().unwrap();
-				if let Some(role) = surface_data_lock.role.as_ref() {
-					println!("\t\tRole: {:?}", role);
-				} else {
-					println!("\t\tRole: None");
-				}
-				println!("\t\tAlive: {}", surface.as_ref().is_alive());
-				println!(
-					"\t\tClient: {}",
-					surface
-						.as_ref()
-						.client()
-						.map(|client| if client.alive() { "Alive client" } else { "Dead client" })
-						.unwrap_or("No client")
-				);
+			let surface_data = surface.get_synced::<SurfaceData<G>>();
+			let surface_data_lock = surface_data.lock().unwrap();
+			if let Some(role) = surface_data_lock.role.as_ref() {
+				println!("\t\tRole: {:?}", role);
+			} else {
+				println!("\t\tRole: None");
 			}
+			println!("\t\tAlive: {}", surface.as_ref().is_alive());
+			println!(
+				"\t\tClient: {}",
+				surface
+					.as_ref()
+					.client()
+					.map(|client| if client.alive() { "Alive client" } else { "Dead client" })
+					.unwrap_or("No client")
+			);
 		}
 	}
 
@@ -396,13 +421,8 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				let inner = &mut *inner;
 				if let Some(focused) = inner.keyboard_focus.clone() {
 					dbg!(focused.as_ref().id());
-					let surface_data_lock = focused
-						.as_ref()
-						.user_data()
-						.get::<Synced<SurfaceData<G>>>()
-						.unwrap()
-						.lock()
-						.unwrap();
+					let surface_data = focused.get_synced::<SurfaceData<G>>();
+					let surface_data_lock = surface_data.lock().unwrap();
 					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
 					for keyboard in &client_info_lock.keyboards {
 						log::debug!("Sending key to focused keyboard");
@@ -421,7 +441,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				let pointer_pos = Point::new(pointer_pos.0.round() as i32, pointer_pos.1.round() as i32);
 
 				if let Some(surface) = inner.window_manager.get_window_under_point(pointer_pos) {
-					let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+					let surface_data = surface.get_synced::<SurfaceData<G>>();
 					let surface_data_lock = surface_data.lock().unwrap();
 					let surface_relative_coords =
 						if let Some(surface_position) = surface_data_lock.try_get_surface_position() {
@@ -432,15 +452,12 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 						};
 
 					if let Some(old_pointer_focus) = inner.pointer_focus.clone() {
-						if surface.as_ref().equals(old_pointer_focus.as_ref()) {
+						if *surface.as_ref() == *old_pointer_focus.as_ref() {
 							// The pointer is over the same surface as it was previously, do not send any focus events
 						} else {
 							// The pointer is over a different surface, unfocus the old one and focus the new one
 							let old_surface_data = old_pointer_focus
-								.as_ref()
-								.user_data()
-								.get::<Synced<SurfaceData<G>>>()
-								.unwrap();
+								.get_synced::<SurfaceData<G>>();
 							let old_surface_data_lock = old_surface_data.lock().unwrap();
 							let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
 							for pointer in &old_client_info_lock.pointers {
@@ -486,10 +503,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 					// The pointer is not over any surface, remove pointer focus from the previous focused surface if any
 					if let Some(old_pointer_focus) = inner.pointer_focus.take() {
 						let surface_data = old_pointer_focus
-							.as_ref()
-							.user_data()
-							.get::<Synced<SurfaceData<G>>>()
-							.unwrap();
+							.get_synced::<SurfaceData<G>>();
 						let surface_data_lock = surface_data.lock().unwrap();
 						let client_info_lock = surface_data_lock.client_info.lock().unwrap();
 						for pointer in &client_info_lock.pointers {
@@ -505,7 +519,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				let pointer_pos = Point::new(pointer_pos.0.round() as i32, pointer_pos.1.round() as i32);
 
 				if let Some(surface) = inner.window_manager.get_window_under_point(pointer_pos) {
-					let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+					let surface_data = surface.get_synced::<SurfaceData<G>>();
 					let surface_data_lock = surface_data.lock().unwrap();
 
 					if pointer_button.state == wl_pointer::ButtonState::Pressed {
@@ -515,10 +529,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							} else {
 								// Change the keyboard focus
 								let old_surface_data = old_keyboard_focus
-									.as_ref()
-									.user_data()
-									.get::<Synced<SurfaceData<G>>>()
-									.unwrap();
+									.get_synced::<SurfaceData<G>>();
 								let old_surface_data_lock = old_surface_data.lock().unwrap();
 								let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
 								for keyboard in &old_client_info_lock.keyboards {
@@ -547,10 +558,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 					// Remove the keyboard focus from the current focus if empty space is clicked
 					if let Some(old_keyboard_focus) = inner.keyboard_focus.take() {
 						let old_surface_data = old_keyboard_focus
-							.as_ref()
-							.user_data()
-							.get::<Synced<SurfaceData<G>>>()
-							.unwrap();
+							.get_synced::<SurfaceData<G>>();
 						let old_surface_data_lock = old_surface_data.lock().unwrap();
 						let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
 						for keyboard in &old_client_info_lock.keyboards {
@@ -561,11 +569,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 
 				// Send event to focused window
 				if let Some(focused) = inner.keyboard_focus.clone() {
-					let surface_data = focused
-						.as_ref()
-						.user_data()
-						.get::<Arc<Mutex<SurfaceData<G>>>>()
-						.unwrap();
+					let surface_data = focused.get_synced::<SurfaceData<G>>();
 					let surface_data_lock = surface_data.lock().unwrap();
 					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
 					for pointer in &client_info_lock.pointers {
@@ -632,12 +636,10 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							let graphics_backend_destructor = Arc::clone(&graphics_backend_state);
 							let inner_destructor = Arc::clone(&inner);
 							let surface = id.clone();
-							let mut inner_lock = inner.lock().unwrap();
 							let surface_resource = surface.as_ref();
-							let client_info = inner_lock
+							let client_info = inner.lock().unwrap()
 								.client_manager
 								.get_client_info(surface_resource.client().unwrap());
-							drop(inner_lock);
 							let mut graphics_backend_state_lock = graphics_backend_state.lock().unwrap();
 							let surface_renderer_data = graphics_backend_state_lock.renderer.create_surface_renderer_data().unwrap();
 							let surface_data: Arc<Mutex<SurfaceData<G>>> =
@@ -697,12 +699,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 										let mut surface_data_lock = surface_data.lock().unwrap();
 										surface_data_lock.commit_pending_state();
 										if let Some(ref committed_buffer) = surface_data_lock.committed_buffer {
-											let buffer_data = committed_buffer
-												.0
-												.as_ref()
-												.user_data()
-												.get::<Synced<G::ShmBuffer>>()
-												.unwrap();
+											let buffer_data = committed_buffer.0.get_synced::<G::ShmBuffer>();
 											let buffer_data_lock = buffer_data.lock().unwrap();
 											let new_size =
 												Size::new(buffer_data_lock.width(), buffer_data_lock.height());
@@ -733,11 +730,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 								move |surface: wl_surface::WlSurface, _filter, _dispatch_data| {
 									log::debug!("Got wl_surface destroy request");
 									let mut graphics_backend_state_lock = graphics_backend_destructor.lock().unwrap();
-									let surface_data = surface
-										.as_ref()
-										.user_data()
-										.get::<Arc<Mutex<SurfaceData<G>>>>()
-										.unwrap();
+									let surface_data = surface.get_synced::<SurfaceData<G>>();
 									graphics_backend_state_lock
 										.renderer
 										.destroy_surface_renderer_data(

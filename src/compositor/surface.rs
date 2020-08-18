@@ -145,7 +145,7 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 	pub fn commit_pending_state(&mut self) {
 		if let Some(new_buffer) = self.pending_state.attached_buffer.take() {
 			if let Some(new_buffer) = new_buffer.as_ref() {
-				let committed_buffer_data = new_buffer.0.as_ref().user_data().get::<Synced<G::ShmBuffer>>().unwrap();
+				let committed_buffer_data = new_buffer.0.get_synced::<G::ShmBuffer>();
 				let committed_buffer_data_lock = committed_buffer_data.lock().unwrap();
 				if let Some(role) = self.role.as_mut() {
 					role.set_surface_size(Size::new(

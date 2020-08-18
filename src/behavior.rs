@@ -28,7 +28,7 @@ pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
 	fn get_surface_under_point(&self, point: Point) -> Option<wl_surface::WlSurface> {
 		let mut got_surface = None;
 		for surface in self.surfaces_ascending() {
-			let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+			let surface_data = surface.get_synced::<SurfaceData<G>>();
 			let surface_data_lock = surface_data.lock().unwrap();
 			if surface_data_lock
 				.try_get_surface_geometry()
@@ -44,7 +44,7 @@ pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
 	fn get_window_under_point(&self, point: Point) -> Option<wl_surface::WlSurface> {
 		let mut got_surface = None;
 		for surface in self.surfaces_ascending() {
-			let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+			let surface_data = surface.get_synced::<SurfaceData<G>>();
 			let surface_data_lock = surface_data.lock().unwrap();
 			if surface_data_lock
 				.try_get_window_geometry()
@@ -106,12 +106,7 @@ impl<G: GraphicsBackend + 'static> SurfaceTree<G> {
 			.map(|x| x.0)
 		{
 			let surface = self.nodes.remove(i);
-			let surface_data = surface
-				.wl_surface
-				.as_ref()
-				.user_data()
-				.get::<Arc<Mutex<SurfaceData<G>>>>()
-				.unwrap();
+			let surface_data = surface.wl_surface.get_synced::<SurfaceData<G>>();
 			let mut surface_data_lock = surface_data.lock().unwrap();
 			surface_data_lock.destroy();
 		}
@@ -133,7 +128,7 @@ impl<G: GraphicsBackend + 'static> DumbWindowManagerBehavior<G> {
 impl<G: GraphicsBackend + 'static> WindowManagerBehavior<G> for DumbWindowManagerBehavior<G> {
 	fn add_surface(&mut self, surface: wl_surface::WlSurface) {
 		log::debug!("Added surface");
-		let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+		let surface_data = surface.get_synced::<SurfaceData<G>>();
 		let mut surface_data_lock = surface_data.lock().unwrap();
 		if let Some(ref role) = surface_data_lock.role {
 			let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
@@ -148,7 +143,7 @@ impl<G: GraphicsBackend + 'static> WindowManagerBehavior<G> for DumbWindowManage
 	}
 
 	fn handle_surface_resize(&mut self, surface: wl_surface::WlSurface, _new_size: Size) {
-		let surface_data = surface.as_ref().user_data().get::<Synced<SurfaceData<G>>>().unwrap();
+		let surface_data = surface.get_synced::<SurfaceData<G>>();
 		let mut _surface_data_lock = surface_data.lock().unwrap();
 		log::warn!("Surface resize handling not implemented");
 	}

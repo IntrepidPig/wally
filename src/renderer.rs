@@ -1,6 +1,5 @@
 use std::{
 	os::unix::io::RawFd,
-	sync::{Arc, Mutex},
 };
 
 // TODO remove this festus dependency
@@ -10,7 +9,7 @@ use wayland_server::protocol::*;
 
 use crate::{
 	backend::{GraphicsBackend, Vertex, RgbaInfo},
-	compositor::{surface::{SurfaceData}},
+	compositor::{prelude::*, surface::{SurfaceData}},
 };
 
 pub struct Renderer<G: GraphicsBackend> {
@@ -140,11 +139,7 @@ impl<G: GraphicsBackend> Renderer<G> {
 
 	// TODO: handle other sorts of buffers (DMA buffers!)
 	pub fn create_texture_from_wl_buffer(&mut self, wl_buffer: wl_buffer::WlBuffer) -> Result<G::TextureHandle, G::Error> {
-		let buffer_data = wl_buffer
-			.as_ref()
-			.user_data()
-			.get::<Arc<Mutex<G::ShmBuffer>>>()
-			.unwrap();
+		let buffer_data = wl_buffer.get_synced::<G::ShmBuffer>();
 		let buffer_data_lock = &mut *buffer_data.lock().unwrap();
 		let texture_handle = self.backend.create_texture_from_shm_buffer(buffer_data_lock)?;
 		Ok(texture_handle)
@@ -244,11 +239,7 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 	
 	/// Draw a surface on 
 	pub fn draw_surface(&mut self, surface: wl_surface::WlSurface) -> Result<(), G::Error> {
-		let surface_data = surface
-			.as_ref()
-			.user_data()
-			.get::<Arc<Mutex<SurfaceData<G>>>>()
-			.unwrap();
+		let surface_data = surface.get_synced::<SurfaceData<G>>();
 		let surface_data_lock = &mut *surface_data.lock().unwrap();
 		
 		// If the surface has been committed a buffer that hasn't been uploaded to the graphics
