@@ -209,10 +209,17 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 														xdg_toplevel::Request::ShowWindowMenu { .. } => {
 															log::debug!("Got xdg_toplevel show_window_meny request");
 														}
-														xdg_toplevel::Request::Move { seat: _seat, serial: _serial } => {
+														xdg_toplevel::Request::Move {
+															seat: _seat,
+															serial: _serial,
+														} => {
 															log::debug!("Got xdg_toplevel move request");
 														}
-														xdg_toplevel::Request::Resize { seat: _seat, serial: _serail, edges: _edges, } => {
+														xdg_toplevel::Request::Resize {
+															seat: _seat,
+															serial: _serail,
+															edges: _edges,
+														} => {
 															log::debug!("Got xdg_toplevel resize request");
 														}
 														xdg_toplevel::Request::SetMaxSize { .. } => {

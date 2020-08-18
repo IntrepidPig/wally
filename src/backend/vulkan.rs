@@ -1,16 +1,9 @@
-use std::{
-	fmt,
-	os::unix::io::RawFd,
-	path::Path,
-};
+use std::{fmt, os::unix::io::RawFd, path::Path};
 
 use festus::{
-	present::PresentBackend,
 	geometry::*,
-	renderer::{
-		self, Renderer, TextureSource, VulkanTextureData,
-		texture::{BufferTextureSource},
-	},
+	present::PresentBackend,
+	renderer::{self, texture::BufferTextureSource, Renderer, TextureSource, VulkanTextureData},
 	rk::{
 		ash::{version::DeviceV1_0, vk},
 		Device,
@@ -19,13 +12,11 @@ use festus::{
 use thiserror::Error;
 use wayland_server::protocol::*;
 
-use crate::{
-	backend::{
-		easy_shm::{EasyShmBuffer, EasyShmPool},
-		GraphicsBackend, Vertex,
-	},
-};
 use super::RgbaInfo;
+use crate::backend::{
+	easy_shm::{EasyShmBuffer, EasyShmPool},
+	GraphicsBackend, Vertex,
+};
 
 pub struct VulkanGraphicsBackend<P: PresentBackend> {
 	renderer: Renderer,
@@ -111,15 +102,17 @@ impl<P: PresentBackend + 'static> GraphicsBackend for VulkanGraphicsBackend<P> {
 			})
 		}
 	}
-	
+
 	fn create_texture_from_rgba(&mut self, rgba: RgbaInfo) -> Result<Self::TextureHandle, Self::Error> {
 		unsafe {
-			self.renderer.create_texture(BufferTextureSource {
-				width: rgba.width,
-				height: rgba.height,
-				format: vk::Format::R8G8B8A8_UNORM,
-				buffer: rgba.data,
-			}).map_err(|_e| VulkanGraphicsBackendError::Unknown)
+			self.renderer
+				.create_texture(BufferTextureSource {
+					width: rgba.width,
+					height: rgba.height,
+					format: vk::Format::R8G8B8A8_UNORM,
+					buffer: rgba.data,
+				})
+				.map_err(|_e| VulkanGraphicsBackendError::Unknown)
 		}
 	}
 
@@ -237,24 +230,32 @@ impl<P: PresentBackend + 'static> GraphicsBackend for VulkanGraphicsBackend<P> {
 			})
 		}
 	}
-	
+
 	fn destroy_texture(&mut self, handle: Self::TextureHandle) -> Result<(), Self::Error> {
-		unsafe { self.renderer.destroy_texture(handle); }
+		unsafe {
+			self.renderer.destroy_texture(handle);
+		}
 		Ok(())
 	}
-	
+
 	fn destroy_vertex_buffer(&mut self, handle: Self::VertexBufferHandle) -> Result<(), Self::Error> {
-		unsafe { self.renderer.destroy_vertex_buffer(handle); }
+		unsafe {
+			self.renderer.destroy_vertex_buffer(handle);
+		}
 		Ok(())
 	}
-	
+
 	fn destroy_mvp_buffer(&mut self, handle: Self::MvpBufferHandle) -> Result<(), Self::Error> {
-		unsafe { self.renderer.destroy_mvp_buffer(handle); }
+		unsafe {
+			self.renderer.destroy_mvp_buffer(handle);
+		}
 		Ok(())
 	}
-	
+
 	fn destroy_render_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error> {
-		unsafe { self.renderer.destroy_render_target(handle); }
+		unsafe {
+			self.renderer.destroy_render_target(handle);
+		}
 		Ok(())
 	}
 

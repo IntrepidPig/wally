@@ -60,7 +60,7 @@ pub trait GraphicsBackend: fmt::Debug {
 		stride: u32,
 		format: wl_shm::Format,
 	) -> Result<Self::ShmBuffer, Self::Error>;
-	
+
 	fn create_texture_from_rgba(&mut self, rgba: RgbaInfo) -> Result<Self::TextureHandle, Self::Error>;
 
 	fn create_texture_from_shm_buffer(
@@ -75,7 +75,7 @@ pub trait GraphicsBackend: fmt::Debug {
 	) -> Result<Self::VertexBufferHandle, Self::Error>;
 
 	fn create_mvp_buffer(&mut self, mvp: [[[f32; 4]; 4]; 3]) -> Result<Self::MvpBufferHandle, Self::Error>;
-	
+
 	// TODO! this returns a mutable reference with the same lifetime as self, which is not correct.
 	// This should instead be done with a closure that takes the mutable reference as an argument.
 	fn map_mvp_buffer(&mut self, handle: Self::MvpBufferHandle) -> Option<&mut [[[f32; 4]; 4]; 3]>;
@@ -96,13 +96,13 @@ pub trait GraphicsBackend: fmt::Debug {
 	unsafe fn end_render_pass(&mut self, target: Self::RenderTargetHandle) -> Result<(), Self::Error>;
 
 	fn present_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error>;
-	
+
 	fn destroy_texture(&mut self, handle: Self::TextureHandle) -> Result<(), Self::Error>;
-	
+
 	fn destroy_vertex_buffer(&mut self, handle: Self::VertexBufferHandle) -> Result<(), Self::Error>;
-	
+
 	fn destroy_mvp_buffer(&mut self, handle: Self::MvpBufferHandle) -> Result<(), Self::Error>;
-	
+
 	fn destroy_render_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error>;
 
 	fn get_size(&self) -> Size;

@@ -4,16 +4,16 @@ use calloop::EventLoop;
 };*/
 use structopt::StructOpt;
 
-use crate::{
-	backend::{vulkan::VulkanGraphicsBackend, winit::WinitInputBackend},
-	//compositor::prelude::*,
+use crate::backend::{vulkan::VulkanGraphicsBackend, winit::WinitInputBackend};
+use festus::{
+	geometry::Size,
+	present::{
+		drm::DrmPresentBackend,
+		//vk_display::DisplaySurfaceCreator,
+		winit::WinitSurfaceCreator,
+		SwapchainPresentBackend,
+	},
 };
-use festus::{geometry::Size, present::{
-	drm::DrmPresentBackend,
-	//vk_display::DisplaySurfaceCreator,
-	winit::WinitSurfaceCreator,
-	SwapchainPresentBackend,
-}};
 
 pub mod backend;
 pub mod compositor;

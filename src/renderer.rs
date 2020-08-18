@@ -1,15 +1,13 @@
-use std::{
-	os::unix::io::RawFd,
-};
+use std::os::unix::io::RawFd;
 
 // TODO remove this festus dependency
-use festus::{math::*, geometry::*};
+use festus::{geometry::*, math::*};
 use thiserror::Error;
 use wayland_server::protocol::*;
 
 use crate::{
-	backend::{GraphicsBackend, Vertex, RgbaInfo},
-	compositor::{prelude::*, surface::{SurfaceData}},
+	backend::{GraphicsBackend, RgbaInfo, Vertex},
+	compositor::{prelude::*, surface::SurfaceData},
 };
 
 pub struct Renderer<G: GraphicsBackend> {
@@ -34,19 +32,23 @@ impl<G: GraphicsBackend> Renderer<G> {
 			cursor_hotspot: Point::new(4, 4),
 			viewport,
 		};
-		
+
 		// Load the cursor image
 		let cursor_image_path = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/cursor_0.png");
 		let load_image = image::open(cursor_image_path)
-			.map_err(|e| log::error!("Failed to open image at path '{}': {}", cursor_image_path, e)).unwrap();
+			.map_err(|e| log::error!("Failed to open image at path '{}': {}", cursor_image_path, e))
+			.unwrap();
 		let image_rgba = load_image.into_rgba();
 		let dims = image_rgba.dimensions();
 		let image_data = image_rgba.into_raw();
-		let cursor_plane = renderer.create_plane_from_rgba(Rect::new(0, 0, 24, 24), RgbaInfo {
-			width: dims.0,
-			height: dims.1,
-			data: &image_data,
-		})?;
+		let cursor_plane = renderer.create_plane_from_rgba(
+			Rect::new(0, 0, 24, 24),
+			RgbaInfo {
+				width: dims.0,
+				height: dims.1,
+				data: &image_data,
+			},
+		)?;
 		renderer.cursor_plane = Some(cursor_plane);
 		Ok(renderer)
 	}
@@ -71,8 +73,12 @@ impl<G: GraphicsBackend> Renderer<G> {
 		self.backend
 			.create_shm_buffer(shm_pool, offset, width, height, stride, format)
 	}
-	
-	pub fn create_plane_with_texture(&mut self, geometry: Rect, texture_handle: G::TextureHandle) -> Result<Plane<G>, G::Error> {
+
+	pub fn create_plane_with_texture(
+		&mut self,
+		geometry: Rect,
+		texture_handle: G::TextureHandle,
+	) -> Result<Plane<G>, G::Error> {
 		let vertices = &[
 			Vertex {
 				pos: [0.0, 0.0, 0.0],
@@ -101,7 +107,7 @@ impl<G: GraphicsBackend> Renderer<G> {
 		};
 		Ok(plane)
 	}
-	
+
 	fn create_mvp(&self, geometry: Rect) -> [[[f32; 4]; 4]; 3] {
 		let pos = Point2::from(geometry.point());
 		let size = Vec2::from(geometry.size());
@@ -124,21 +130,22 @@ impl<G: GraphicsBackend> Renderer<G> {
 
 		mvp.into()
 	}
-	
+
 	/// Create a new plane positioned at `Point` from the given Rgba data
 	pub fn create_plane_from_rgba(&mut self, geometry: Rect, rgba: RgbaInfo) -> Result<Plane<G>, G::Error> {
 		let texture_handle = self.backend.create_texture_from_rgba(rgba)?;
 		self.create_plane_with_texture(geometry, texture_handle)
 	}
-	
+
 	pub fn create_surface_renderer_data(&mut self) -> Result<SurfaceRendererData<G>, G::Error> {
-		Ok(SurfaceRendererData {
-			plane: None,
-		})
+		Ok(SurfaceRendererData { plane: None })
 	}
 
 	// TODO: handle other sorts of buffers (DMA buffers!)
-	pub fn create_texture_from_wl_buffer(&mut self, wl_buffer: wl_buffer::WlBuffer) -> Result<G::TextureHandle, G::Error> {
+	pub fn create_texture_from_wl_buffer(
+		&mut self,
+		wl_buffer: wl_buffer::WlBuffer,
+	) -> Result<G::TextureHandle, G::Error> {
 		let buffer_data = wl_buffer.get_synced::<G::ShmBuffer>();
 		let buffer_data_lock = &mut *buffer_data.lock().unwrap();
 		let texture_handle = self.backend.create_texture_from_shm_buffer(buffer_data_lock)?;
@@ -180,11 +187,11 @@ impl<G: GraphicsBackend> Renderer<G> {
 	pub fn destroy_texture(&mut self, handle: G::TextureHandle) -> Result<(), G::Error> {
 		self.backend.destroy_texture(handle)
 	}
-	
+
 	pub fn destroy_render_target(&mut self, handle: G::RenderTargetHandle) -> Result<(), G::Error> {
 		self.backend.destroy_render_target(handle)
 	}
-	
+
 	pub fn destroy_plane(&mut self, plane: Plane<G>) -> Result<(), G::Error> {
 		self.destroy_vertex_buffer(plane.vertex_buffer_handle)?;
 		self.destroy_mvp_buffer(plane.mvp_buffer_handle)?;
@@ -236,12 +243,12 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 		}
 		Ok(())
 	}
-	
-	/// Draw a surface on 
+
+	/// Draw a surface on
 	pub fn draw_surface(&mut self, surface: wl_surface::WlSurface) -> Result<(), G::Error> {
 		let surface_data = surface.get_synced::<SurfaceData<G>>();
 		let surface_data_lock = &mut *surface_data.lock().unwrap();
-		
+
 		// If the surface has been committed a buffer that hasn't been uploaded to the graphics
 		// backend yet, do that now.
 		// TODO: don't ignore the buffer/texture offset
@@ -256,7 +263,9 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 					self.renderer.destroy_texture(old_texture)?;
 				} else {
 					// Use a dummy value for the geometry because it will be overwritten before drawing TODO clean this up?
-					let plane = self.renderer.create_plane_with_texture(Rect::new(0, 0, 1, 1), texture)?;
+					let plane = self
+						.renderer
+						.create_plane_with_texture(Rect::new(0, 0, 1, 1), texture)?;
 					renderer_data.plane = Some(plane);
 				}
 			} else {
@@ -265,40 +274,58 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 			committed_buffer.0.release();
 			log::trace!("Committed buffer gotten");
 		}
-		
+
 		// If the surface has known geometry and a plane ready for drawing, write the geometry data to the surfaces MVP buffer and draw the surface
 		let surface_geometry_opt = surface_data_lock.try_get_surface_geometry();
-		if let Some(ref mut plane) = surface_data_lock.renderer_data.as_mut().and_then(|renderer_data| renderer_data.plane.as_mut()) {
+		if let Some(ref mut plane) = surface_data_lock
+			.renderer_data
+			.as_mut()
+			.and_then(|renderer_data| renderer_data.plane.as_mut())
+		{
 			if let Some(surface_geometry) = surface_geometry_opt {
 				let mvp = self.renderer.create_mvp(surface_geometry);
-				self
-					.renderer
+				self.renderer
 					.backend
 					.map_mvp_buffer(plane.mvp_buffer_handle)
 					.map(|mvp_map| *mvp_map = mvp);
-				self
-					.draw(
-						plane.vertex_buffer_handle,
-						plane.texture_handle,
-						plane.mvp_buffer_handle,
-					)?;
+				self.draw(
+					plane.vertex_buffer_handle,
+					plane.texture_handle,
+					plane.mvp_buffer_handle,
+				)?;
 			}
 		}
-		
+
 		// Call the frame callback with a TODO magic serial number
 		surface_data_lock.callback.as_ref().map(|callback| callback.done(42));
-		
+
 		Ok(())
 	}
-	
+
 	pub fn draw_cursor(&mut self, position: Point) -> Result<(), G::Error> {
-		let mvp = self.renderer.create_mvp(Rect::new(position.x - self.renderer.cursor_hotspot.x, position.y - self.renderer.cursor_hotspot.y, 24, 24));
+		let mvp = self.renderer.create_mvp(Rect::new(
+			position.x - self.renderer.cursor_hotspot.x,
+			position.y - self.renderer.cursor_hotspot.y,
+			24,
+			24,
+		));
 		// I wrote this at 12:34 AM
-		if let Some((vertex_buffer_handle, texture_handle, mvp_buffer_handle)) = if let Some(ref cursor_plane) = self.renderer.cursor_plane {
-			let mvp_map = self.renderer.backend.map_mvp_buffer(cursor_plane.mvp_buffer_handle).unwrap();
-			*mvp_map = mvp;
-			Some((cursor_plane.vertex_buffer_handle, cursor_plane.texture_handle, cursor_plane.mvp_buffer_handle))
-		} else { None } {
+		if let Some((vertex_buffer_handle, texture_handle, mvp_buffer_handle)) =
+			if let Some(ref cursor_plane) = self.renderer.cursor_plane {
+				let mvp_map = self
+					.renderer
+					.backend
+					.map_mvp_buffer(cursor_plane.mvp_buffer_handle)
+					.unwrap();
+				*mvp_map = mvp;
+				Some((
+					cursor_plane.vertex_buffer_handle,
+					cursor_plane.texture_handle,
+					cursor_plane.mvp_buffer_handle,
+				))
+			} else {
+				None
+			} {
 			self.draw(vertex_buffer_handle, texture_handle, mvp_buffer_handle)?;
 		}
 		Ok(())

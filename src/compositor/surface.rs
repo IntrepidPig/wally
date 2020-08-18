@@ -1,8 +1,4 @@
-use crate::{
-	backend::ShmBuffer,
-	compositor::{prelude::*},
-	renderer::SurfaceRendererData,
-};
+use crate::{backend::ShmBuffer, compositor::prelude::*, renderer::SurfaceRendererData};
 
 pub struct PendingState {
 	pub attached_buffer: Option<Option<(wl_buffer::WlBuffer, Point)>>,
@@ -21,13 +17,13 @@ impl PendingState {
 /// This is the data associated with every surface. It is used to store the pending and committed state of the surface
 /// (including pending and committed WlBuffers), the data required by the graphics backend for each surface, the
 /// location and size of the surface, and the input devices useable by the surface.
-/// 
+///
 /// Surfaces are not the same as windows. The implication of this is that the position of a window cannot be
 /// set by setting the position of a surface, because surfaces can define things outside the borders of a window.
 /// As such, methods on this struct that deal with geometry should specify whether they deal with window geometry, or
 /// surface geometry. Operations on window geometry will translate given geometry to surface geometry and return window
 /// geometry as translated from surface geometry. Window geometry is determined in a role specific manner.
-/// 
+///
 /// The surface's role determines how it's geometry is decided.
 pub struct SurfaceData<G: GraphicsBackend> {
 	/// Contains the client, pointers, and keyboards associated with this surface
@@ -66,7 +62,7 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 			size: None,
 		}
 	}
-	
+
 	/// Set the position of the surface in order for the window geometry to be at the given position
 	pub fn set_window_position(&mut self, position: Point) {
 		if let Some(solid_window_geometry) = self.role.as_ref().and_then(|role| role.get_solid_window_geometry()) {
@@ -123,7 +119,7 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 			None
 		}
 	}
-	
+
 	/// Returns the position of this
 	pub fn try_get_surface_position(&self) -> Option<Point> {
 		if let Some(window_position) = self.position {
@@ -140,7 +136,7 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 			None
 		}
 	}
-	
+
 	/// Commit all pending state to this surface
 	pub fn commit_pending_state(&mut self) {
 		if let Some(new_buffer) = self.pending_state.attached_buffer.take() {

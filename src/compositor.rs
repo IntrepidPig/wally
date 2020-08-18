@@ -14,14 +14,14 @@ use calloop::{
 };
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use wayland_server::{protocol::*, Interface, Resource, Client, Display, Filter, Main};
+use wayland_server::{protocol::*, Client, Display, Filter, Interface, Main, Resource};
 
 use crate::{
 	backend::{BackendEvent, GraphicsBackend, InputBackend, ShmBuffer},
-	behavior::{WindowManager},
+	behavior::WindowManager,
 	compositor::prelude::*,
 	compositor::surface::SurfaceData,
-	renderer::{Renderer},
+	renderer::Renderer,
 };
 
 pub mod client;
@@ -44,7 +44,7 @@ pub mod prelude {
 
 	pub use crate::{
 		backend::{BackendEvent, GraphicsBackend, InputBackend},
-		compositor::{UserDataAccess, client::ClientInfo, role::Role, surface::SurfaceData, PointerState, Synced},
+		compositor::{client::ClientInfo, role::Role, surface::SurfaceData, PointerState, Synced, UserDataAccess},
 	};
 }
 
@@ -58,7 +58,10 @@ pub trait UserDataAccess {
 	fn get_synced<T: 'static>(&self) -> Synced<T>;
 }
 
-impl<I> UserDataAccess for I where I: Interface + AsRef<Resource<I>> + From<Resource<I>> {
+impl<I> UserDataAccess for I
+where
+	I: Interface + AsRef<Resource<I>> + From<Resource<I>>,
+{
 	fn get<T: 'static>(&self) -> &T {
 		self.try_get().unwrap()
 	}
@@ -343,7 +346,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 						input_update_start.elapsed().as_secs_f64() * 1000.0
 					);
 				}
-				
+
 				let render_update_start = Instant::now();
 				let mut graphics_backend_state = self.graphics_backend_state.lock().unwrap();
 				graphics_backend_state
@@ -367,7 +370,8 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							scene_render_state.draw_surface(surface.clone())?;
 						}
 						let pointer_state = inner.pointer.lock().unwrap();
-						let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
+						let pointer_pos =
+							Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 						scene_render_state.draw_cursor(pointer_pos)?;
 						Ok(())
 					})
@@ -456,8 +460,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							// The pointer is over the same surface as it was previously, do not send any focus events
 						} else {
 							// The pointer is over a different surface, unfocus the old one and focus the new one
-							let old_surface_data = old_pointer_focus
-								.get_synced::<SurfaceData<G>>();
+							let old_surface_data = old_pointer_focus.get_synced::<SurfaceData<G>>();
 							let old_surface_data_lock = old_surface_data.lock().unwrap();
 							let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
 							for pointer in &old_client_info_lock.pointers {
@@ -502,8 +505,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				} else {
 					// The pointer is not over any surface, remove pointer focus from the previous focused surface if any
 					if let Some(old_pointer_focus) = inner.pointer_focus.take() {
-						let surface_data = old_pointer_focus
-							.get_synced::<SurfaceData<G>>();
+						let surface_data = old_pointer_focus.get_synced::<SurfaceData<G>>();
 						let surface_data_lock = surface_data.lock().unwrap();
 						let client_info_lock = surface_data_lock.client_info.lock().unwrap();
 						for pointer in &client_info_lock.pointers {
@@ -528,8 +530,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 								// No focus change, this is the same surface
 							} else {
 								// Change the keyboard focus
-								let old_surface_data = old_keyboard_focus
-									.get_synced::<SurfaceData<G>>();
+								let old_surface_data = old_keyboard_focus.get_synced::<SurfaceData<G>>();
 								let old_surface_data_lock = old_surface_data.lock().unwrap();
 								let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
 								for keyboard in &old_client_info_lock.keyboards {
@@ -557,8 +558,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				} else {
 					// Remove the keyboard focus from the current focus if empty space is clicked
 					if let Some(old_keyboard_focus) = inner.keyboard_focus.take() {
-						let old_surface_data = old_keyboard_focus
-							.get_synced::<SurfaceData<G>>();
+						let old_surface_data = old_keyboard_focus.get_synced::<SurfaceData<G>>();
 						let old_surface_data_lock = old_surface_data.lock().unwrap();
 						let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
 						for keyboard in &old_client_info_lock.keyboards {
@@ -637,11 +637,16 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							let inner_destructor = Arc::clone(&inner);
 							let surface = id.clone();
 							let surface_resource = surface.as_ref();
-							let client_info = inner.lock().unwrap()
+							let client_info = inner
+								.lock()
+								.unwrap()
 								.client_manager
 								.get_client_info(surface_resource.client().unwrap());
 							let mut graphics_backend_state_lock = graphics_backend_state.lock().unwrap();
-							let surface_renderer_data = graphics_backend_state_lock.renderer.create_surface_renderer_data().unwrap();
+							let surface_renderer_data = graphics_backend_state_lock
+								.renderer
+								.create_surface_renderer_data()
+								.unwrap();
 							let surface_data: Arc<Mutex<SurfaceData<G>>> =
 								Arc::new(Mutex::new(SurfaceData::new(client_info, surface_renderer_data)));
 							let surface_data_clone = Arc::clone(&surface_data);
