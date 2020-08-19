@@ -47,7 +47,7 @@ pub trait GraphicsBackend: Sized + fmt::Debug {
 
 	type OutputHandle: Copy + Send + fmt::Debug;
 
-	fn update(&mut self) -> Result<Option<GraphicsBackendEvent<Self>>, Self::Error>;
+	fn update(&mut self) -> Result<(), Self::Error>;
 
 	fn create_shm_pool(&mut self, fd: RawFd, size: usize) -> Result<Self::ShmPool, Self::Error>;
 

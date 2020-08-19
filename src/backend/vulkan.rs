@@ -82,8 +82,8 @@ impl<P: PresentBackend + 'static> GraphicsBackend for VulkanGraphicsBackend<P> {
 
 	type OutputHandle = P::OutputHandle;
 
-	fn update(&mut self) -> Result<Option<GraphicsBackendEvent<Self>>, Self::Error> {
-		Ok(self.present_backend.update().map(From::from))
+	fn update(&mut self) -> Result<(), Self::Error> {
+		Ok(self.present_backend.update())
 	}
 
 	fn create_shm_pool(&mut self, fd: RawFd, size: usize) -> Result<Self::ShmPool, Self::Error> {

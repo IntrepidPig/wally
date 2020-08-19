@@ -27,6 +27,7 @@ use crate::{
 
 pub mod client;
 pub mod role;
+pub mod output;
 pub mod seat;
 pub mod shell;
 pub mod shm;
@@ -623,6 +624,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub(crate) fn setup_globals(&mut self) {
 		self.setup_compositor_global();
 		self.setup_shm_global();
+		self.setup_output_global();
 		self.setup_seat_global();
 		self.setup_data_device_manager_global();
 		self.setup_wl_shell_global();

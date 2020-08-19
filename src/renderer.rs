@@ -6,7 +6,7 @@ use thiserror::Error;
 use wayland_server::protocol::*;
 
 use crate::{
-	backend::{GraphicsBackend, RgbaInfo, Vertex},
+	backend::{GraphicsBackend, RgbaInfo, Vertex, GraphicsBackendEvent},
 	compositor::{prelude::*, surface::SurfaceData},
 };
 
@@ -84,6 +84,10 @@ impl<G: GraphicsBackend> Renderer<G> {
 		)?;
 		renderer.cursor_plane = Some(cursor_plane);
 		Ok(renderer)
+	}
+
+	pub fn update(&mut self) -> Result<(), G::Error> {
+		self.backend.update()
 	}
 
 	pub fn create_shm_pool(&mut self, fd: RawFd, size: usize) -> Result<G::ShmPool, G::Error> {
@@ -188,8 +192,8 @@ impl<G: GraphicsBackend> Renderer<G> {
 		Ok(texture_handle)
 	}
 
-	pub fn update(&mut self) -> Result<(), G::Error> {
-		Ok(())
+	pub fn outputs(&self) -> Vec<Output<G>> {
+		self.outputs.clone()
 	}
 
 	pub fn render_scene<'a, F: Fn(SceneRenderState<G>) -> Result<(), G::Error>>(
