@@ -5,12 +5,12 @@ authors = ["IntrepidPig <bennycaguilera@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-winit = "0.20.0"
+winit = "0.22.0"
 wayland-server = { version = "0.27" }
 wayland-protocols = { version = "0.27", features = ["server", "unstable_protocols"] }
 calloop = "0.4.4"
 log = "0.4.8"
-fern = "0.5.9"
+fern = { version = "0.5.9", features = ["colored"] }
 thiserror = "1.0.9"
 memmap = "0.7.0"
 crossbeam = "0.7.3"
@@ -20,7 +20,7 @@ nix = "^0.17.0"
 dbus = "0.8.1"
 udev = "0.2.0"
 mio = "0.6.21"
-drm = "0.3.4"
+drm = "=0.3.3"
 gbm = { version = "0.5.0", default-features = false, features = ["drm-support"] }
 shared_library = "0.1.9"
 raw-window-handle = "0.3.3"

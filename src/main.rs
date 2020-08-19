@@ -19,6 +19,7 @@ pub mod backend;
 pub mod compositor;
 //pub mod logind;
 pub mod behavior;
+pub mod input;
 pub mod renderer;
 //pub mod wl;
 
@@ -137,10 +138,13 @@ fn start_drm_compositor(event_loop: calloop::EventLoop<()>) {
 }
 
 fn setup_logging() {
+	let colors = Box::new(fern::colors::ColoredLevelConfig::new())
+		.info(fern::colors::Color::Blue)
+		.warn(fern::colors::Color::Yellow)
+		.error(fern::colors::Color::Red)
+		.debug(fern::colors::Color::BrightGreen);
 	fern::Dispatch::new()
-		.format(|out, message, record| {
-			out.finish(format_args!("[{}][{}] {}", record.target(), record.level(), message))
-		})
+		.format(move |out, message, record| out.finish(format_args!("[{}] {}", colors.color(record.level()), message)))
 		.level(log::LevelFilter::Trace)
 		.chain(std::io::stderr())
 		.apply()

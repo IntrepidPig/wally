@@ -127,10 +127,9 @@ impl<G: GraphicsBackend + 'static> DumbWindowManagerBehavior<G> {
 
 impl<G: GraphicsBackend + 'static> WindowManagerBehavior<G> for DumbWindowManagerBehavior<G> {
 	fn add_surface(&mut self, surface: wl_surface::WlSurface) {
-		log::debug!("Added surface");
 		let surface_data = surface.get_synced::<SurfaceData<G>>();
 		let mut surface_data_lock = surface_data.lock().unwrap();
-		if let Some(ref role) = surface_data_lock.role {
+		if let Some(ref _role) = surface_data_lock.role {
 			let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
 			let size = Size::new(500, 375);
 			surface_data_lock.set_window_position(position);

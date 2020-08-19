@@ -2,7 +2,6 @@ use std::time::Instant;
 
 use calloop::channel::{self, Channel, Sender};
 use thiserror::Error;
-use wayland_server::protocol::*;
 use winit::{
 	event::{ElementState, Event as WinitEvent, WindowEvent},
 	event_loop::{ControlFlow, EventLoop},
@@ -49,6 +48,8 @@ impl WinitInputBackend {
 								is_synthetic: _is_synthetic,
 							},
 					} => {
+						// TODO: store an xkbcommon::xkb::State in here and update it with every key
+						// press so we can keep track of modifiers and serialize them
 						if input.virtual_keycode == Some(winit::event::VirtualKeyCode::LControl) {
 							if input.state == ElementState::Pressed {
 								ctrl_pressed = true;
@@ -77,10 +78,7 @@ impl WinitInputBackend {
 							serial: crate::compositor::get_input_serial(),
 							time: start.elapsed().as_millis() as u32,
 							key: input.scancode,
-							state: match input.state {
-								ElementState::Pressed => wl_keyboard::KeyState::Pressed,
-								ElementState::Released => wl_keyboard::KeyState::Released,
-							},
+							state: input.state.into(),
 						}))
 					}
 					WinitEvent::DeviceEvent {
@@ -109,10 +107,7 @@ impl WinitInputBackend {
 								serial: crate::compositor::get_input_serial(),
 								time: start.elapsed().as_millis() as u32,
 								button,
-								state: match state {
-									ElementState::Pressed => wl_pointer::ButtonState::Pressed,
-									ElementState::Released => wl_pointer::ButtonState::Released,
-								},
+								state: state.into(),
 							}))
 						} else {
 							None

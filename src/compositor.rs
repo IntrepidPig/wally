@@ -21,6 +21,7 @@ use crate::{
 	behavior::WindowManager,
 	compositor::prelude::*,
 	compositor::surface::SurfaceData,
+	input::KeyboardState,
 	renderer::Renderer,
 };
 
@@ -43,7 +44,7 @@ pub mod prelude {
 	pub use festus::geometry::*;
 
 	pub use crate::{
-		backend::{BackendEvent, GraphicsBackend, InputBackend},
+		backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress, PointerButton, PointerMotion, PressState},
 		compositor::{client::ClientInfo, role::Role, surface::SurfaceData, PointerState, Synced, UserDataAccess},
 	};
 }
@@ -118,8 +119,9 @@ pub struct CompositorInner<I: InputBackend, G: GraphicsBackend> {
 	running: bool,
 	pub client_manager: ClientManager,
 	pub window_manager: WindowManager<G>,
-	pub pointer: Arc<Mutex<PointerState>>,
+	pub pointer: Synced<PointerState>,
 	pub pointer_focus: Option<wl_surface::WlSurface>,
+	pub keyboard_state: Synced<KeyboardState>,
 	pub keyboard_focus: Option<wl_surface::WlSurface>,
 	phantom: PhantomData<I>,
 }
@@ -228,9 +230,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			)
 			.expect("Failed to insert signal handler in event loop");
 
-		let idle_event_source = event_loop_handle.insert_idle(|_wally: &mut Compositor<I, G>| {
-			log::trace!("Finished processing events");
-		});
+		let idle_event_source = event_loop_handle.insert_idle(|_wally: &mut Compositor<I, G>| {});
 
 		let mut display_events = calloop::generic::Generic::from_raw_fd(display.get_poll_fd());
 		display_events.set_interest(mio::Ready::readable());
@@ -239,7 +239,6 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			.insert_source(
 				display_events,
 				|_event: calloop::generic::Event<calloop::generic::EventedRawFd>, compositor: &mut Compositor<I, G>| {
-					log::trace!("Got display event");
 					compositor
 						.display
 						.dispatch(Duration::from_millis(0), &mut ())
@@ -258,7 +257,6 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				input_events,
 				|e: calloop::channel::Event<BackendEvent>, compositor: &mut Compositor<I, G>| {
 					if let calloop::channel::Event::Msg(event) = e {
-						log::trace!("Got input event");
 						compositor.handle_input_event(event);
 					}
 				},
@@ -272,6 +270,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			sensitivity: 1.0,
 			custom_cursor: None,
 		}));
+		let keyboard_state = Arc::new(Mutex::new(KeyboardState::new()));
 
 		let inner = CompositorInner {
 			running: true,
@@ -282,6 +281,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			//surface_tree: SurfaceTree::new(Arc::clone(&pointer_state)),
 			pointer: pointer_state,
 			pointer_focus: None,
+			keyboard_state,
 			keyboard_focus: None,
 			phantom: PhantomData,
 		};
@@ -415,7 +415,6 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	}
 
 	pub fn handle_input_event(&mut self, event: BackendEvent) {
-		log::trace!("Got input: {:?}", event);
 		let mut inner = self.inner.lock().unwrap();
 		match event {
 			BackendEvent::StopRequested => {
@@ -423,15 +422,28 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			}
 			BackendEvent::KeyPress(key_press) => {
 				let inner = &mut *inner;
+
+				// Update the internal xkb keyboard state tracker.
+				let mut keyboard_state_lock = inner.keyboard_state.lock().unwrap();
+				let state_change = keyboard_state_lock.update_key(key_press.clone());
+
+				// Send the key event to the surface that currently has keyboard focus, and an updated modifiers event if modifiers changed.
 				if let Some(focused) = inner.keyboard_focus.clone() {
-					dbg!(focused.as_ref().id());
 					let surface_data = focused.get_synced::<SurfaceData<G>>();
 					let surface_data_lock = surface_data.lock().unwrap();
 					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
 					for keyboard in &client_info_lock.keyboards {
-						log::debug!("Sending key to focused keyboard");
-						dbg!(&key_press);
-						keyboard.key(key_press.serial, key_press.time, key_press.key, key_press.state);
+						if dbg!(state_change) {
+							let mods = keyboard_state_lock.xkb_modifiers_state;
+							keyboard.modifiers(
+								key_press.serial,
+								mods.mods_depressed,
+								mods.mods_latched,
+								mods.mods_locked,
+								mods.group,
+							);
+						}
+						keyboard.key(key_press.serial, key_press.time, key_press.key, key_press.state.into());
 					}
 				}
 			}
@@ -466,6 +478,9 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							for pointer in &old_client_info_lock.pointers {
 								pointer.leave(get_input_serial(), &old_pointer_focus);
 							}
+							for keyboard in &old_client_info_lock.keyboards {
+								keyboard.leave(get_input_serial(), &old_pointer_focus);
+							}
 							drop(old_client_info_lock);
 							drop(old_surface_data_lock);
 							let surface_client_info_lock = surface_data_lock.client_info.lock().unwrap();
@@ -476,6 +491,13 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 									surface_relative_coords.x as f64,
 									surface_relative_coords.y as f64,
 								);
+							}
+							for keyboard in &surface_client_info_lock.keyboards {
+								keyboard.enter(
+									get_input_serial(),
+									&surface,
+									Vec::new(), // TODO: currently pressed keys
+								)
 							}
 							inner.pointer_focus = Some(surface.clone());
 						}
@@ -489,6 +511,13 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 								surface_relative_coords.x as f64,
 								surface_relative_coords.y as f64,
 							);
+						}
+						for keyboard in &surface_client_info_lock.keyboards {
+							keyboard.enter(
+								get_input_serial(),
+								&surface,
+								Vec::new(), // TODO: currently pressed keys
+							)
 						}
 						inner.pointer_focus = Some(surface.clone());
 					}
@@ -511,6 +540,9 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 						for pointer in &client_info_lock.pointers {
 							pointer.leave(get_input_serial(), &old_pointer_focus);
 						}
+						for keyboard in &client_info_lock.keyboards {
+							keyboard.leave(get_input_serial(), &old_pointer_focus);
+						}
 					}
 				}
 			}
@@ -524,7 +556,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 					let surface_data = surface.get_synced::<SurfaceData<G>>();
 					let surface_data_lock = surface_data.lock().unwrap();
 
-					if pointer_button.state == wl_pointer::ButtonState::Pressed {
+					if pointer_button.state == PressState::Press {
 						if let Some(old_keyboard_focus) = inner.keyboard_focus.clone() {
 							if surface.as_ref().equals(old_keyboard_focus.as_ref()) {
 								// No focus change, this is the same surface
@@ -577,7 +609,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							pointer_button.serial,
 							pointer_button.time,
 							pointer_button.button,
-							pointer_button.state,
+							pointer_button.state.into(),
 						);
 					}
 				}
@@ -610,29 +642,19 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 					let graphics_backend_state = Arc::clone(&graphics_backend_state);
 					match request {
 						wl_compositor::Request::CreateRegion { id } => {
-							log::debug!("Got request to create region");
 							id.quick_assign(move |_main, request, _| {
 								match request {
 									wl_region::Request::Destroy => {
 										// TODO handle in destructor
 									}
-									wl_region::Request::Add { x, y, width, height } => {
-										log::debug!("Got request to add ({}, {}) {}x{} to region", x, y, width, height);
-									}
-									wl_region::Request::Subtract { x, y, width, height } => {
-										log::debug!(
-											"Got request to subtract ({}, {}) {}x{} from region",
-											x,
-											y,
-											width,
-											height
-										);
-									}
+									wl_region::Request::Add { .. } => {}
+									wl_region::Request::Subtract { .. } => {}
 									_ => log::warn!("Unknown request for wl_region"),
 								}
 							});
 						}
 						wl_compositor::Request::CreateSurface { id } => {
+							log::trace!("Creating surface");
 							let graphics_backend_destructor = Arc::clone(&graphics_backend_state);
 							let inner_destructor = Arc::clone(&inner);
 							let surface = id.clone();
@@ -661,7 +683,6 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 										// Handled by destructor
 									}
 									wl_surface::Request::Attach { buffer, x, y } => {
-										log::debug!("Got wl_surface attach request");
 										let mut surface_data_lock = surface_data.lock().unwrap();
 										// Release the previously attached buffer if it hasn't been committed yet
 										if let Some(old_buffer) = surface_data_lock.pending_state.attached_buffer.take()
@@ -679,9 +700,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 											surface_data_lock.pending_state.attached_buffer = Some(None);
 										}
 									}
-									wl_surface::Request::Damage { .. } => {
-										log::debug!("Got wl_surface damage request");
-									}
+									wl_surface::Request::Damage { .. } => {}
 									wl_surface::Request::Frame { callback } => {
 										let mut surface_data_lock = surface_data.lock().unwrap();
 										if let Some(_old_callback) =
@@ -689,18 +708,12 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 										{
 											log::warn!("Replacing surface callback with a newly requested one, unclear if this is intended behavior");
 										}
-										log::debug!("Got wl_surface frame request");
 									}
-									wl_surface::Request::SetOpaqueRegion { .. } => {
-										log::debug!("Got wl_surface set_opaque_region request");
-									}
-									wl_surface::Request::SetInputRegion { .. } => {
-										log::debug!("Got wl_surface set_input_region request");
-									}
+									wl_surface::Request::SetOpaqueRegion { .. } => {}
+									wl_surface::Request::SetInputRegion { .. } => {}
 									wl_surface::Request::Commit => {
 										// TODO: relying on the impl of ShmBuffer to ascertain the size of the buffer is probably unsound if the ShmBuffer impl lies.
 										// So that trait should either be unsafe, or Shm should be moved out of the Rendering backend and EasyShm should be made canonical
-										log::debug!("Got wl_surface commit request");
 										let mut surface_data_lock = surface_data.lock().unwrap();
 										surface_data_lock.commit_pending_state();
 										if let Some(ref committed_buffer) = surface_data_lock.committed_buffer {
@@ -717,15 +730,9 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 												.handle_surface_resize((*surface).clone(), new_size);
 										}
 									}
-									wl_surface::Request::SetBufferTransform { .. } => {
-										log::debug!("Got wl_surface set_buffer_transform request");
-									}
-									wl_surface::Request::SetBufferScale { .. } => {
-										log::debug!("Got wl_surface set_buffer_scale request");
-									}
-									wl_surface::Request::DamageBuffer { .. } => {
-										log::debug!("Got wl_surface damage_buffer request");
-									}
+									wl_surface::Request::SetBufferTransform { .. } => {}
+									wl_surface::Request::SetBufferScale { .. } => {}
+									wl_surface::Request::DamageBuffer { .. } => {}
 									_ => {
 										log::warn!("Got unknown request for wl_surface");
 									}
@@ -733,7 +740,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							});
 							id.assign_destructor(Filter::new(
 								move |surface: wl_surface::WlSurface, _filter, _dispatch_data| {
-									log::debug!("Got wl_surface destroy request");
+									log::trace!("Destroying wl_surface");
 									let mut graphics_backend_state_lock = graphics_backend_destructor.lock().unwrap();
 									let surface_data = surface.get_synced::<SurfaceData<G>>();
 									graphics_backend_state_lock
@@ -747,7 +754,6 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 									inner.trim_dead_clients();
 								},
 							));
-							log::debug!("Got request to create surface");
 						}
 						_ => {
 							log::warn!("Got unknown request for wl_compositor");
@@ -765,12 +771,8 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			|(main, _num): (Main<wl_data_device_manager::WlDataDeviceManager>, u32), _filter, _dispatch_data| {
 				main.quick_assign(
 					|_main, request: wl_data_device_manager::Request, _dispatch_data| match request {
-						wl_data_device_manager::Request::CreateDataSource { id: _ } => {
-							log::debug!("Got create_data_source request for wl_data_device_manager");
-						}
-						wl_data_device_manager::Request::GetDataDevice { id: _, seat: _ } => {
-							log::debug!("Got get_data_device request for wl_data_device_manager");
-						}
+						wl_data_device_manager::Request::CreateDataSource { id: _ } => {}
+						wl_data_device_manager::Request::GetDataDevice { id: _, seat: _ } => {}
 						_ => {
 							log::warn!("Got unknown request for wl_data_device_manager");
 						}
@@ -785,7 +787,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 
 impl<I: InputBackend, G: GraphicsBackend> Drop for Compositor<I, G> {
 	fn drop(&mut self) {
-		log::trace!("Closing wayland socket");
+		log::info!("Closing wayland socket");
 		fs::remove_file("/run/user/1000/wayland-0").unwrap();
 	}
 }

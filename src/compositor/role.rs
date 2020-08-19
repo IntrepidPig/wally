@@ -1,15 +1,8 @@
-use std::{
-	fmt,
-	sync::{Arc, Mutex},
-};
+use std::fmt;
 
 use wayland_protocols::xdg_shell::server::*;
 
-use crate::compositor::{
-	prelude::*,
-	xdg::{XdgSurfaceData, XdgSurfaceRole, XdgToplevelData},
-	PointerState, Synced,
-};
+use crate::compositor::{prelude::*, xdg::XdgSurfaceData};
 
 #[derive(Clone)]
 pub enum Role {
@@ -19,7 +12,7 @@ pub enum Role {
 impl Role {
 	pub fn destroy(&mut self) {
 		match *self {
-			Role::XdgSurface(ref xdg_surface) => {}
+			Role::XdgSurface(ref _xdg_surface) => {}
 		}
 	}
 
@@ -44,9 +37,9 @@ impl Role {
 		}
 	}
 
-	pub fn set_surface_size(&mut self, size: Size) {
+	pub fn set_surface_size(&mut self, _size: Size) {
 		match self {
-			Role::XdgSurface(ref xdg_surface) => log::warn!("Set surface size not fully implemented"),
+			Role::XdgSurface(ref _xdg_surface) => log::warn!("Set surface size not fully implemented"),
 		}
 	}
 

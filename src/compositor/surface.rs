@@ -14,6 +14,27 @@ impl PendingState {
 	}
 }
 
+/* pub trait SurfaceExt<G> {
+	fn focus(&self, point: Point);
+}
+
+impl<G: GraphicsBackend + 'static> SurfaceExt<G> for wl_surface::WlSurface {
+	fn focus(&self, point: Point) {
+		let surface_data = self.get_synced::<SurfaceData<G>>();
+		let surface_data_lock = surface_data.lock().unwrap();
+		let client_info_lock = surface_data_lock.client_info.lock().unwrap();
+		for pointer in &client_info_lock.pointers {
+			pointer.enter(
+				crate::compositor::get_input_serial(),
+				self,
+				point.x as f64,
+				point.y as f64,
+			);
+		}
+
+	}
+}
+ */
 /// This is the data associated with every surface. It is used to store the pending and committed state of the surface
 /// (including pending and committed WlBuffers), the data required by the graphics backend for each surface, the
 /// location and size of the surface, and the input devices useable by the surface.

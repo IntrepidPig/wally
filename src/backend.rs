@@ -128,12 +128,18 @@ pub enum BackendEvent {
 	StopRequested,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PressState {
+	Press,
+	Release,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyPress {
 	pub serial: u32,
 	pub time: u32,
 	pub key: u32,
-	pub state: wl_keyboard::KeyState,
+	pub state: PressState,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -151,5 +157,116 @@ pub struct PointerButton {
 	pub serial: u32,
 	pub time: u32,
 	pub button: u32,
-	pub state: wl_pointer::ButtonState,
+	pub state: PressState,
+}
+
+// This is ridiculous
+impl From<wl_keyboard::KeyState> for PressState {
+	fn from(t: wl_keyboard::KeyState) -> Self {
+		match t {
+			wl_keyboard::KeyState::Pressed => Self::Press,
+			wl_keyboard::KeyState::Released => Self::Release,
+			_ => unreachable!("no"),
+		}
+	}
+}
+
+impl From<PressState> for wl_keyboard::KeyState {
+	fn from(t: PressState) -> Self {
+		match t {
+			PressState::Press => wl_keyboard::KeyState::Pressed,
+			PressState::Release => wl_keyboard::KeyState::Released,
+		}
+	}
+}
+
+impl From<wl_pointer::ButtonState> for PressState {
+	fn from(t: wl_pointer::ButtonState) -> Self {
+		match t {
+			wl_pointer::ButtonState::Pressed => Self::Press,
+			wl_pointer::ButtonState::Released => Self::Release,
+			_ => unreachable!(),
+		}
+	}
+}
+
+impl From<PressState> for wl_pointer::ButtonState {
+	fn from(t: PressState) -> Self {
+		match t {
+			PressState::Press => wl_pointer::ButtonState::Pressed,
+			PressState::Release => wl_pointer::ButtonState::Released,
+		}
+	}
+}
+
+impl From<xkbcommon::xkb::KeyDirection> for PressState {
+	fn from(t: xkbcommon::xkb::KeyDirection) -> Self {
+		match t {
+			xkbcommon::xkb::KeyDirection::Down => Self::Press,
+			xkbcommon::xkb::KeyDirection::Up => Self::Release,
+		}
+	}
+}
+
+impl From<PressState> for xkbcommon::xkb::KeyDirection {
+	fn from(t: PressState) -> Self {
+		match t {
+			PressState::Press => xkbcommon::xkb::KeyDirection::Down,
+			PressState::Release => xkbcommon::xkb::KeyDirection::Up,
+		}
+	}
+}
+
+impl From<input::event::pointer::ButtonState> for PressState {
+	fn from(t: input::event::pointer::ButtonState) -> Self {
+		match t {
+			input::event::pointer::ButtonState::Pressed => Self::Press,
+			input::event::pointer::ButtonState::Released => Self::Release,
+		}
+	}
+}
+
+impl From<PressState> for input::event::pointer::ButtonState {
+	fn from(t: PressState) -> Self {
+		match t {
+			PressState::Press => input::event::pointer::ButtonState::Pressed,
+			PressState::Release => input::event::pointer::ButtonState::Released,
+		}
+	}
+}
+
+impl From<input::event::keyboard::KeyState> for PressState {
+	fn from(t: input::event::keyboard::KeyState) -> Self {
+		match t {
+			input::event::keyboard::KeyState::Pressed => Self::Press,
+			input::event::keyboard::KeyState::Released => Self::Release,
+		}
+	}
+}
+
+impl From<PressState> for input::event::keyboard::KeyState {
+	fn from(t: PressState) -> Self {
+		match t {
+			PressState::Press => input::event::keyboard::KeyState::Pressed,
+			PressState::Release => input::event::keyboard::KeyState::Released,
+		}
+	}
+}
+
+impl From<::winit::event::ElementState> for PressState {
+	fn from(t: ::winit::event::ElementState) -> Self {
+		match t {
+			::winit::event::ElementState::Pressed => Self::Press,
+			::winit::event::ElementState::Released => Self::Release,
+		}
+	}
+}
+
+impl From<PressState> for ::winit::event::ElementState {
+	fn from(t: PressState) -> Self {
+		match t {
+			PressState::Press => ::winit::event::ElementState::Pressed,
+			PressState::Release => ::winit::event::ElementState::Released,
+		}
+	}
 }

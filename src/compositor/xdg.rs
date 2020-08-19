@@ -93,44 +93,18 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				main.quick_assign(move |_main, request: xdg_wm_base::Request, _| {
 					let inner = Arc::clone(&inner);
 					match request {
-						xdg_wm_base::Request::Destroy => {
-							log::debug!("Got xdg_wm_base destroy request");
-						}
+						xdg_wm_base::Request::Destroy => {}
 						xdg_wm_base::Request::CreatePositioner { id } => {
-							log::debug!("Got xdg_wm_base create_positioner request");
 							id.quick_assign(
 								|_main: Main<xdg_positioner::XdgPositioner>, request: xdg_positioner::Request, _| {
 									match request {
-										xdg_positioner::Request::Destroy => {
-											log::debug!("Got xdg_positioner destroy request");
-										}
-										xdg_positioner::Request::SetSize { width, height } => {
-											log::debug!("Got xdg_positioner set_size request for {}x{}", width, height);
-										}
-										xdg_positioner::Request::SetAnchorRect { x, y, width, height } => {
-											log::debug!(
-												"Got xdg_positioner set_anchor_rect request for ({}, {}), {}x{}",
-												x,
-												y,
-												width,
-												height
-											);
-										}
-										xdg_positioner::Request::SetAnchor { anchor } => {
-											log::debug!("Got xdg_positioner set anchor request: {:?}", anchor);
-										}
-										xdg_positioner::Request::SetGravity { gravity } => {
-											log::debug!("Got xdg_positioner set gravity request: {:?}", gravity);
-										}
-										xdg_positioner::Request::SetConstraintAdjustment { constraint_adjustment } => {
-											log::debug!(
-												"Got xdg_positioner set constraint adjustment request: {:?}",
-												constraint_adjustment
-											);
-										}
-										xdg_positioner::Request::SetOffset { x, y } => {
-											log::debug!("Got xdg_positioner set offset request: ({}, {})", x, y);
-										}
+										xdg_positioner::Request::Destroy => {}
+										xdg_positioner::Request::SetSize { .. } => {}
+										xdg_positioner::Request::SetAnchorRect { .. } => {}
+										xdg_positioner::Request::SetAnchor { .. } => {}
+										xdg_positioner::Request::SetGravity { .. } => {}
+										xdg_positioner::Request::SetConstraintAdjustment { .. } => {}
+										xdg_positioner::Request::SetOffset { .. } => {}
 										_ => {
 											log::warn!("Got unknown request for xdg_positioner");
 										}
@@ -142,7 +116,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 							id: xdg_surface_id,
 							surface,
 						} => {
-							log::debug!("Got xdg_wm_base get_xdg_surface request");
+							log::trace!("Creating xdg_surface");
 							let xdg_surface = (*xdg_surface_id).clone();
 							let xdg_surface_data = Arc::new(Mutex::new(XdgSurfaceData::new()));
 							let xdg_surface_data_clone = Arc::clone(&xdg_surface_data);
@@ -154,12 +128,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 								move |_main: Main<xdg_surface::XdgSurface>, request: xdg_surface::Request, _| {
 									let inner = Arc::clone(&inner);
 									match request {
-										xdg_surface::Request::Destroy => {
-											log::debug!("Got xdg_surface destroy request");
-										}
 										xdg_surface::Request::GetToplevel { id: xdg_toplevel_id } => {
-											log::debug!("Got xdg_surface get_top_level request");
-
 											// Set the xdg toplevel data
 											let xdg_toplevel = (*xdg_toplevel_id).clone();
 											let xdg_toplevel_data = Arc::new(Mutex::new(XdgToplevelData::new()));
@@ -186,63 +155,29 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 												move |_main, request: xdg_toplevel::Request, _| {
 													let toplevel_data = Arc::clone(&xdg_toplevel_data);
 													match request {
-														xdg_toplevel::Request::Destroy => {
-															log::debug!("Got xdg_toplevel destroy request");
-														}
-														xdg_toplevel::Request::SetParent { parent } => {
-															log::debug!(
-																"Got xdg_toplevel set_parent request on {:?}",
-																parent.map(|parent| parent.as_ref().id())
-															);
-														}
+														xdg_toplevel::Request::SetParent { .. } => {}
 														xdg_toplevel::Request::SetTitle { title } => {
-															log::debug!("Got xdg_toplevel set_title request");
 															let mut toplevel_data_lock = toplevel_data.lock().unwrap();
 															toplevel_data_lock.title = Some(title);
 														}
-														xdg_toplevel::Request::SetAppId { app_id } => {
-															log::debug!(
-																"Got xdg_toplevel set_app_id request: '{}'",
-																app_id
-															);
-														}
-														xdg_toplevel::Request::ShowWindowMenu { .. } => {
-															log::debug!("Got xdg_toplevel show_window_meny request");
-														}
+														xdg_toplevel::Request::SetAppId { .. } => {}
+														xdg_toplevel::Request::ShowWindowMenu { .. } => {}
 														xdg_toplevel::Request::Move {
 															seat: _seat,
 															serial: _serial,
-														} => {
-															log::debug!("Got xdg_toplevel move request");
-														}
+														} => {}
 														xdg_toplevel::Request::Resize {
 															seat: _seat,
 															serial: _serail,
 															edges: _edges,
-														} => {
-															log::debug!("Got xdg_toplevel resize request");
-														}
-														xdg_toplevel::Request::SetMaxSize { .. } => {
-															log::debug!("Got xdg_toplevel set_max_size request");
-														}
-														xdg_toplevel::Request::SetMinSize { .. } => {
-															log::debug!("Got xdg_toplevel set_min_size request");
-														}
-														xdg_toplevel::Request::SetMaximized => {
-															log::debug!("Got xdg_toplevel set_maximized request");
-														}
-														xdg_toplevel::Request::UnsetMaximized => {
-															log::debug!("Got xdg_toplevel unset_maximized request");
-														}
-														xdg_toplevel::Request::SetFullscreen { .. } => {
-															log::debug!("Got xdg_toplevel set_fullscreen request");
-														}
-														xdg_toplevel::Request::UnsetFullscreen => {
-															log::debug!("Got xdg_toplevel unset_fullscreen request");
-														}
-														xdg_toplevel::Request::SetMinimized => {
-															log::debug!("Got xdg_toplevel set_minimized request");
-														}
+														} => {}
+														xdg_toplevel::Request::SetMaxSize { .. } => {}
+														xdg_toplevel::Request::SetMinSize { .. } => {}
+														xdg_toplevel::Request::SetMaximized => {}
+														xdg_toplevel::Request::UnsetMaximized => {}
+														xdg_toplevel::Request::SetFullscreen { .. } => {}
+														xdg_toplevel::Request::UnsetFullscreen => {}
+														xdg_toplevel::Request::SetMinimized => {}
 														_ => {
 															log::warn!("Got unknown request for xdg_toplevel");
 														}
@@ -250,26 +185,19 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 												},
 											);
 										}
-										xdg_surface::Request::GetPopup { .. } => {
-											log::debug!("Got xdg_surface get_popup request");
-										}
+										xdg_surface::Request::GetPopup { .. } => {}
 										xdg_surface::Request::SetWindowGeometry { x, y, width, height } => {
-											log::debug!("Got xdg_surface set_window_geometry request");
 											let solid_window_geometry = Rect::new(x, y, width as u32, height as u32);
 											let mut xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
 											xdg_surface_data_lock.solid_window_geometry = Some(solid_window_geometry);
 										}
-										xdg_surface::Request::AckConfigure { .. } => {
-											log::debug!("Got xdg_surface ack_configure request");
-										}
+										xdg_surface::Request::AckConfigure { .. } => {}
 										_ => log::warn!("Got unknown request for xdg_surface"),
 									}
 								},
 							);
 						}
-						xdg_wm_base::Request::Pong { serial } => {
-							log::debug!("Got xdg_wm_base pong request with serial: {}", serial);
-						}
+						xdg_wm_base::Request::Pong { .. } => {}
 						_ => {
 							log::warn!("Got unknown request for xdg_wm_base");
 						}

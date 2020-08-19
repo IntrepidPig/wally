@@ -85,9 +85,9 @@ fn parse(buf: &[u8]) -> Result<XCursor, ParseError> {
 		_ => return Err(ParseError::InvalidMagic),
 	};
 
-	let (header_len, buf) = take_cardinal(buf).map_err(|_| ParseError::NoHeaderLength)?;
-	let (version, buf) = take_cardinal(buf).map_err(|_| ParseError::NoVersion)?;
-	let (toc, buf) = take_toc(buf).map_err(|_| ParseError::ToCError)?;
+	let (_header_len, buf) = take_cardinal(buf).map_err(|_| ParseError::NoHeaderLength)?;
+	let (_version, buf) = take_cardinal(buf).map_err(|_| ParseError::NoVersion)?;
+	let (toc, _buf) = take_toc(buf).map_err(|_| ParseError::ToCError)?;
 
 	const COMMENT_TYPE: Cardinal = 0xfffe0001;
 	const IMAGE_TYPE: Cardinal = 0xfffd0002;
@@ -137,10 +137,10 @@ struct Pixel {
 }
 
 fn parse_image(buf: &[u8]) -> Result<Image, ParseError> {
-	let (header_len, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
-	let (r#type, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
+	let (_header_len, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
+	let (_type, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
 	let (subtype, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
-	let (version, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
+	let (_version, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
 	let (width, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
 	let (height, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
 	let (xhot, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
@@ -149,7 +149,7 @@ fn parse_image(buf: &[u8]) -> Result<Image, ParseError> {
 	let (delay, buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
 	let mut pixels = Vec::with_capacity((width * height) as usize);
 	let mut buf = buf;
-	for i in 0..(width * height) {
+	for _ in 0..(width * height) {
 		let (pixel, new_buf) = take_cardinal(buf).map_err(|_| ParseError::Unknown)?;
 		buf = new_buf;
 		pixels.push(Pixel {

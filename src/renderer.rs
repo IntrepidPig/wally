@@ -272,7 +272,6 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 				panic!("Tried to draw a surface whose renderer data has been destroyed");
 			}
 			committed_buffer.0.release();
-			log::trace!("Committed buffer gotten");
 		}
 
 		// If the surface has known geometry and a plane ready for drawing, write the geometry data to the surfaces MVP buffer and draw the surface
@@ -296,8 +295,10 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 			}
 		}
 
-		// Call the frame callback with a TODO magic serial number
-		surface_data_lock.callback.as_ref().map(|callback| callback.done(42));
+		surface_data_lock
+			.callback
+			.take()
+			.map(|callback| callback.done(crate::compositor::get_input_serial()));
 
 		Ok(())
 	}

@@ -92,7 +92,6 @@ impl InputBackend for LibinputInputBackend {
 			log::error!("Failed to dispatch libinput events: {}", e);
 		});
 		while let Some(event) = self.libinput.next() {
-			println!("Got libinput event {:?}", event);
 			if let Some(backend_event) = libinput_event_to_backend_event(event) {
 				let _ = self
 					.event_sender
@@ -119,14 +118,7 @@ fn libinput_event_to_backend_event(event: input::Event) -> Option<BackendEvent> 
 				serial: crate::compositor::get_input_serial(),
 				time: keyboard_key_event.time(),
 				key: keyboard_key_event.key(),
-				state: match keyboard_key_event.key_state() {
-					input::event::keyboard::KeyState::Pressed => {
-						wayland_server::protocol::wl_keyboard::KeyState::Pressed
-					}
-					input::event::keyboard::KeyState::Released => {
-						wayland_server::protocol::wl_keyboard::KeyState::Released
-					}
-				},
+				state: keyboard_key_event.key_state().into(),
 			}),
 		},
 		input::Event::Pointer(pointer_event) => match pointer_event {
@@ -142,14 +134,7 @@ fn libinput_event_to_backend_event(event: input::Event) -> Option<BackendEvent> 
 				serial: crate::compositor::get_input_serial(),
 				time: button.time(),
 				button: button.button(),
-				state: match button.button_state() {
-					input::event::pointer::ButtonState::Pressed => {
-						wayland_server::protocol::wl_pointer::ButtonState::Pressed
-					}
-					input::event::pointer::ButtonState::Released => {
-						wayland_server::protocol::wl_pointer::ButtonState::Released
-					}
-				},
+				state: button.button_state().into(),
 			}),
 			_ => {
 				log::warn!("Got unsupported mouse event");
@@ -157,7 +142,7 @@ fn libinput_event_to_backend_event(event: input::Event) -> Option<BackendEvent> 
 			}
 		},
 		u => {
-			log::debug!("Got unknown libinput event {:?}", u);
+			log::trace!("Got unknown libinput event {:?}", u);
 			return None;
 		}
 	})

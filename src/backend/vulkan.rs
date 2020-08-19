@@ -335,7 +335,6 @@ impl<'a> renderer::TextureSource for EasyShmBufferTextureSource<'a> {
 	) -> Result<VulkanTextureData, ()> {
 		let vk_format = wl_format_to_vk_format(self.buffer.format);
 		let slice = self.buffer.as_slice();
-		log::debug!("Buffer size: {}", slice.len());
 		let (staging_buffer, staging_buffer_memory) = renderer::make_buffer(
 			device,
 			device_memory_properties,
@@ -351,7 +350,6 @@ impl<'a> renderer::TextureSource for EasyShmBufferTextureSource<'a> {
 			vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
 		)?;
 		let image_memory_requirements = device.get_image_memory_requirements(image);
-		log::debug!("Image memory size: {}", image_memory_requirements.size);
 		let image_memory = renderer::allocate_memory(
 			device,
 			device_memory_properties,
@@ -523,16 +521,8 @@ impl<'a> TextureSource for ImagePathTextureSource<'a> {
 
 pub fn wl_format_to_vk_format(wl_format: wl_shm::Format) -> vk::Format {
 	match wl_format {
-		wl_shm::Format::Argb8888 => {
-			log::warn!("Converting unsupported format (Argb8888) to Vulkan format, expect color issues");
-			vk::Format::B8G8R8A8_UNORM
-		}
-		wl_shm::Format::Xrgb8888 => {
-			log::warn!("Converting unsupported format (Xrgb888) to Vulkan format, expect color issues");
-			vk::Format::R8G8B8A8_UNORM
-		}
-		wl_shm::Format::Bgra8888 => vk::Format::B8G8R8A8_UNORM,
-		wl_shm::Format::Rgba8888 => vk::Format::R8G8B8A8_UNORM,
+		wl_shm::Format::Argb8888 => vk::Format::B8G8R8A8_UNORM,
+		wl_shm::Format::Xrgb8888 => vk::Format::R8G8B8A8_UNORM,
 		_ => panic!("Unsupported shm format: {:?}", wl_format),
 	}
 }
