@@ -2,7 +2,7 @@ use std::{fmt, os::unix::io::RawFd, path::Path};
 
 use festus::{
 	geometry::*,
-	present::PresentBackend,
+	present::{self, PresentBackend, PresentBackendEvent},
 	renderer::{self, texture::BufferTextureSource, Renderer, TextureSource, VulkanTextureData},
 	rk::{
 		ash::{version::DeviceV1_0, vk},
@@ -15,7 +15,7 @@ use wayland_server::protocol::*;
 use super::RgbaInfo;
 use crate::backend::{
 	easy_shm::{EasyShmBuffer, EasyShmPool},
-	GraphicsBackend, Vertex,
+	GraphicsBackend, GraphicsBackendEvent, OutputInfo, Vertex,
 };
 
 pub struct VulkanGraphicsBackend<P: PresentBackend> {
@@ -38,6 +38,21 @@ impl<P: PresentBackend> fmt::Debug for VulkanGraphicsBackend<P> {
 			.field("renderer", &"<renderer>")
 			.field("present_backend", &"<present_backend>")
 			.finish()
+	}
+}
+
+impl<P: PresentBackend + 'static> From<PresentBackendEvent<P>> for GraphicsBackendEvent<VulkanGraphicsBackend<P>> {
+	fn from(t: PresentBackendEvent<P>) -> Self {
+		match t {
+			PresentBackendEvent::OutputAdded(handle) => GraphicsBackendEvent::OutputAdded(handle),
+			PresentBackendEvent::OutputRemoved(handle) => GraphicsBackendEvent::OutputRemoved(handle),
+		}
+	}
+}
+
+impl From<present::OutputInfo> for OutputInfo {
+	fn from(t: present::OutputInfo) -> Self {
+		Self { size: t.size }
 	}
 }
 
@@ -65,8 +80,10 @@ impl<P: PresentBackend + 'static> GraphicsBackend for VulkanGraphicsBackend<P> {
 	type RenderTargetHandle = festus::renderer::VulkanRenderTargetHandle;
 	type TextureHandle = festus::renderer::TextureHandle;
 
-	fn update(&mut self) -> Result<(), Self::Error> {
-		Ok(())
+	type OutputHandle = P::OutputHandle;
+
+	fn update(&mut self) -> Result<Option<GraphicsBackendEvent<Self>>, Self::Error> {
+		Ok(self.present_backend.update().map(From::from))
 	}
 
 	fn create_shm_pool(&mut self, fd: RawFd, size: usize) -> Result<Self::ShmPool, Self::Error> {
@@ -222,12 +239,18 @@ impl<P: PresentBackend + 'static> GraphicsBackend for VulkanGraphicsBackend<P> {
 		Ok(())
 	}
 
-	fn present_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error> {
+	fn present_target(
+		&mut self,
+		output: Self::OutputHandle,
+		handle: Self::RenderTargetHandle,
+	) -> Result<(), Self::Error> {
 		unsafe {
-			self.present_backend.present(&mut self.renderer, handle).map_err(|_e| {
-				log::error!("An unknown error occurred while presenting a render result");
-				VulkanGraphicsBackendError::Unknown
-			})
+			self.present_backend
+				.present(&mut self.renderer, output, handle)
+				.map_err(|_e| {
+					log::error!("An unknown error occurred while presenting a render result");
+					VulkanGraphicsBackendError::Unknown
+				})
 		}
 	}
 
@@ -259,8 +282,15 @@ impl<P: PresentBackend + 'static> GraphicsBackend for VulkanGraphicsBackend<P> {
 		Ok(())
 	}
 
-	fn get_size(&self) -> Size {
-		unsafe { self.present_backend.get_current_size() }
+	fn get_current_outputs(&self) -> Vec<Self::OutputHandle> {
+		self.present_backend.get_current_outputs()
+	}
+
+	fn get_output_info(&self, output: Self::OutputHandle) -> Result<super::OutputInfo, Self::Error> {
+		self.present_backend
+			.get_output_info(output)
+			.map(|info| super::OutputInfo { size: info.size })
+			.map_err(|_| VulkanGraphicsBackendError::Unknown)
 	}
 }
 

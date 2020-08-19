@@ -53,7 +53,6 @@ impl KeyboardState {
 	}
 
 	pub fn update_key(&mut self, key_press: KeyPress) -> bool {
-		dbg!(&key_press);
 		self.state.update_key(key_press.key + 8, key_press.state.into());
 		let new_modifiers = self.get_modifier_state();
 		if new_modifiers != self.xkb_modifiers_state {

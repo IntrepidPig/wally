@@ -362,11 +362,10 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				}
 				let inner = &mut *inner;
 				let render_tree_start = Instant::now();
-				let surfaces_iter = inner.window_manager.manager_impl.surfaces_ascending();
 				graphics_backend_state
 					.renderer
 					.render_scene(|mut scene_render_state| {
-						for surface in surfaces_iter {
+						for surface in inner.window_manager.manager_impl.surfaces_ascending() {
 							scene_render_state.draw_surface(surface.clone())?;
 						}
 						let pointer_state = inner.pointer.lock().unwrap();
@@ -433,7 +432,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 					let surface_data_lock = surface_data.lock().unwrap();
 					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
 					for keyboard in &client_info_lock.keyboards {
-						if dbg!(state_change) {
+						if state_change {
 							let mods = keyboard_state_lock.xkb_modifiers_state;
 							keyboard.modifiers(
 								key_press.serial,

@@ -10,27 +10,60 @@ use crate::{
 	compositor::{prelude::*, surface::SurfaceData},
 };
 
+#[derive(Debug)]
+pub struct Output<G: GraphicsBackend> {
+	handle: G::OutputHandle,
+	render_target_handle: G::RenderTargetHandle,
+	pub viewport: Rect,
+}
+
+// Deriving this doesn't work for some reason
+impl<G: GraphicsBackend> Clone for Output<G> {
+	fn clone(&self) -> Self {
+		Self {
+			handle: self.handle,
+			render_target_handle: self.render_target_handle,
+			viewport: self.viewport,
+		}
+	}
+}
+impl<G: GraphicsBackend> Copy for Output<G> {}
+
 pub struct Renderer<G: GraphicsBackend> {
 	// TODO not pub, b/c soundness (this should be fixable once output infrastructure is in place)
 	pub(crate) backend: G,
-	render_target_handle: G::RenderTargetHandle,
+	// TODO: reorganize this to prevent cloning of this all the time to avoid borrow check issues
+	outputs: Vec<Output<G>>,
 	// This should always be some, and is only optional for initialization purposes
 	cursor_plane: Option<Plane<G>>,
-	cursor_hotspot: Point,
-	pub viewport: Rect,
 }
 
 impl<G: GraphicsBackend> Renderer<G> {
 	pub fn init(mut backend: G) -> Result<Self, G::Error> {
-		let output_size = backend.get_size();
-		let render_target_handle = backend.create_render_target(output_size)?;
-		let viewport = Rect::new(0, 0, output_size.width, output_size.height);
+		// Create a render target for each output, placing each new viewport next horizontally
+		let mut current_width = 0;
+		let outputs = backend
+			.get_current_outputs()
+			.into_iter()
+			.map(|handle| {
+				let info = backend.get_output_info(handle)?;
+				let x = current_width as i32;
+				current_width += info.size.width;
+				let render_target_handle = backend.create_render_target(info.size)?;
+				let viewport = Rect::new(x, 0, info.size.width, info.size.height);
+				let output = Output {
+					handle,
+					render_target_handle,
+					viewport,
+				};
+				Ok(output)
+			})
+			.collect::<Result<Vec<_>, _>>()?;
+
 		let mut renderer = Self {
 			backend,
-			render_target_handle,
+			outputs,
 			cursor_plane: None,
-			cursor_hotspot: Point::new(4, 4),
-			viewport,
 		};
 
 		// Load the cursor image
@@ -99,7 +132,10 @@ impl<G: GraphicsBackend> Renderer<G> {
 		];
 		let indices = &[0, 1, 2, 1, 2, 3];
 		let vertex_buffer_handle = self.backend.create_vertex_buffer(vertices, indices)?;
-		let mvp_buffer_handle = self.backend.create_mvp_buffer(self.create_mvp(geometry))?;
+		// Use a dummy view size since it will be overwritten before drawing anyway
+		let mvp_buffer_handle = self
+			.backend
+			.create_mvp_buffer(self.create_mvp(Size::new(1, 1), geometry))?;
 		let plane = Plane {
 			vertex_buffer_handle,
 			mvp_buffer_handle,
@@ -108,10 +144,10 @@ impl<G: GraphicsBackend> Renderer<G> {
 		Ok(plane)
 	}
 
-	fn create_mvp(&self, geometry: Rect) -> [[[f32; 4]; 4]; 3] {
+	fn create_mvp(&self, view_size: Size, geometry: Rect) -> [[[f32; 4]; 4]; 3] {
 		let pos = Point2::from(geometry.point());
 		let size = Vec2::from(geometry.size());
-		let view_size = Vec2::from(self.viewport.size());
+		let view_size = Vec2::from(view_size);
 
 		let scale = Mat4::new_nonuniform_scaling(&Vec3::new(size.x, size.y, 1.0));
 		let model = nalgebra::Isometry3::translation(pos.x, pos.y, 0.0).to_homogeneous() * scale;
@@ -156,23 +192,28 @@ impl<G: GraphicsBackend> Renderer<G> {
 		Ok(())
 	}
 
-	pub fn render_scene<'a, F: FnOnce(SceneRenderState<G>) -> Result<(), G::Error>>(
+	pub fn render_scene<'a, F: Fn(SceneRenderState<G>) -> Result<(), G::Error>>(
 		&'a mut self,
 		f: F,
 	) -> Result<(), G::Error> {
-		unsafe {
-			self.backend.begin_render_pass(self.render_target_handle)?;
-			let scene_render_state = SceneRenderState { renderer: self };
-			f(scene_render_state)?;
-			self.backend.end_render_pass(self.render_target_handle)?;
+		for output in self.outputs.clone() {
+			unsafe {
+				self.backend.begin_render_pass(output.render_target_handle)?;
+				let scene_render_state = SceneRenderState { renderer: self };
+				// TODO: This should really be an FnOnce and not be called in a loop
+				f(scene_render_state)?;
+				self.backend.end_render_pass(output.render_target_handle)?;
+			}
 		}
 
 		Ok(())
 	}
 
 	pub fn present(&mut self) -> Result<(), G::Error> {
-		let render_target_handle = self.render_target_handle;
-		self.backend.present_target(render_target_handle)?;
+		for output in self.outputs.clone() {
+			let render_target_handle = output.render_target_handle;
+			self.backend.present_target(output.handle, render_target_handle)?;
+		}
 		Ok(())
 	}
 
@@ -282,16 +323,23 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 			.and_then(|renderer_data| renderer_data.plane.as_mut())
 		{
 			if let Some(surface_geometry) = surface_geometry_opt {
-				let mvp = self.renderer.create_mvp(surface_geometry);
-				self.renderer
-					.backend
-					.map_mvp_buffer(plane.mvp_buffer_handle)
-					.map(|mvp_map| *mvp_map = mvp);
-				self.draw(
-					plane.vertex_buffer_handle,
-					plane.texture_handle,
-					plane.mvp_buffer_handle,
-				)?;
+				for output in self.renderer.outputs.clone() {
+					if let Some(output_local_point) = get_local_coordinates(output.viewport, surface_geometry) {
+						let mut output_local_geometry = surface_geometry;
+						output_local_geometry.x = output_local_point.x;
+						output_local_geometry.y = output_local_point.y;
+						let mvp = self.renderer.create_mvp(output.viewport.size(), output_local_geometry);
+						self.renderer
+							.backend
+							.map_mvp_buffer(plane.mvp_buffer_handle)
+							.map(|mvp_map| *mvp_map = mvp);
+						self.draw(
+							plane.vertex_buffer_handle,
+							plane.texture_handle,
+							plane.mvp_buffer_handle,
+						)?;
+					}
+				}
 			}
 		}
 
@@ -304,32 +352,58 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 	}
 
 	pub fn draw_cursor(&mut self, position: Point) -> Result<(), G::Error> {
-		let mvp = self.renderer.create_mvp(Rect::new(
-			position.x - self.renderer.cursor_hotspot.x,
-			position.y - self.renderer.cursor_hotspot.y,
-			24,
-			24,
-		));
-		// I wrote this at 12:34 AM
-		if let Some((vertex_buffer_handle, texture_handle, mvp_buffer_handle)) =
-			if let Some(ref cursor_plane) = self.renderer.cursor_plane {
-				let mvp_map = self
-					.renderer
-					.backend
-					.map_mvp_buffer(cursor_plane.mvp_buffer_handle)
-					.unwrap();
-				*mvp_map = mvp;
-				Some((
-					cursor_plane.vertex_buffer_handle,
-					cursor_plane.texture_handle,
-					cursor_plane.mvp_buffer_handle,
-				))
-			} else {
-				None
-			} {
-			self.draw(vertex_buffer_handle, texture_handle, mvp_buffer_handle)?;
+		// TODO: nah
+		const CURSOR_WIDTH: u32 = 24;
+		const CURSOR_HEIGHT: u32 = 24;
+		const CURSOR_HOTSPOT_X: i32 = 4;
+		const CURSOR_HOTSPOT_Y: i32 = 4;
+		let cursor_rect = Rect::new(
+			position.x - CURSOR_HOTSPOT_X,
+			position.y - CURSOR_HOTSPOT_Y,
+			CURSOR_WIDTH,
+			CURSOR_HEIGHT,
+		);
+
+		for output in self.renderer.outputs.clone() {
+			if let Some(output_local_coordinates) = get_local_coordinates(output.viewport, cursor_rect) {
+				let output_local_rect = Rect::new(
+					output_local_coordinates.x,
+					output_local_coordinates.y,
+					cursor_rect.width,
+					cursor_rect.height,
+				);
+				let mvp = self.renderer.create_mvp(output.viewport.size(), output_local_rect);
+				// I wrote this at 12:34 AM
+				if let Some((vertex_buffer_handle, texture_handle, mvp_buffer_handle)) =
+					if let Some(ref cursor_plane) = self.renderer.cursor_plane {
+						let mvp_map = self
+							.renderer
+							.backend
+							.map_mvp_buffer(cursor_plane.mvp_buffer_handle)
+							.unwrap();
+						*mvp_map = mvp;
+						Some((
+							cursor_plane.vertex_buffer_handle,
+							cursor_plane.texture_handle,
+							cursor_plane.mvp_buffer_handle,
+						))
+					} else {
+						None
+					} {
+					self.draw(vertex_buffer_handle, texture_handle, mvp_buffer_handle)?;
+				}
+			}
 		}
+
 		Ok(())
+	}
+}
+
+fn get_local_coordinates(viewport: Rect, rect: Rect) -> Option<Point> {
+	if rect.intersects(viewport) {
+		Some(Point::new(rect.x - viewport.x, rect.y - viewport.y))
+	} else {
+		None
 	}
 }
 

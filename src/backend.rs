@@ -29,11 +29,11 @@ pub trait ShmBuffer {
 	fn format(&self) -> wl_shm::Format;
 }
 
-pub unsafe trait RenderTarget {
-	fn size(&self) -> Size;
+pub struct OutputInfo {
+	pub size: Size,
 }
 
-pub trait GraphicsBackend: fmt::Debug {
+pub trait GraphicsBackend: Sized + fmt::Debug {
 	type Error: StdError + fmt::Debug + fmt::Display;
 
 	type ShmPool: Send + fmt::Debug;
@@ -45,7 +45,9 @@ pub trait GraphicsBackend: fmt::Debug {
 
 	type RenderTargetHandle: Copy + Send + fmt::Debug + 'static;
 
-	fn update(&mut self) -> Result<(), Self::Error>;
+	type OutputHandle: Copy + Send + fmt::Debug;
+
+	fn update(&mut self) -> Result<Option<GraphicsBackendEvent<Self>>, Self::Error>;
 
 	fn create_shm_pool(&mut self, fd: RawFd, size: usize) -> Result<Self::ShmPool, Self::Error>;
 
@@ -84,6 +86,10 @@ pub trait GraphicsBackend: fmt::Debug {
 
 	fn create_render_target(&mut self, size: Size) -> Result<Self::RenderTargetHandle, Self::Error>;
 
+	fn get_current_outputs(&self) -> Vec<Self::OutputHandle>;
+
+	fn get_output_info(&self, output: Self::OutputHandle) -> Result<OutputInfo, Self::Error>;
+
 	unsafe fn begin_render_pass(&mut self, target: Self::RenderTargetHandle) -> Result<(), Self::Error>;
 
 	unsafe fn draw(
@@ -95,7 +101,11 @@ pub trait GraphicsBackend: fmt::Debug {
 
 	unsafe fn end_render_pass(&mut self, target: Self::RenderTargetHandle) -> Result<(), Self::Error>;
 
-	fn present_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error>;
+	fn present_target(
+		&mut self,
+		output: Self::OutputHandle,
+		handle: Self::RenderTargetHandle,
+	) -> Result<(), Self::Error>;
 
 	fn destroy_texture(&mut self, handle: Self::TextureHandle) -> Result<(), Self::Error>;
 
@@ -104,8 +114,6 @@ pub trait GraphicsBackend: fmt::Debug {
 	fn destroy_mvp_buffer(&mut self, handle: Self::MvpBufferHandle) -> Result<(), Self::Error>;
 
 	fn destroy_render_target(&mut self, handle: Self::RenderTargetHandle) -> Result<(), Self::Error>;
-
-	fn get_size(&self) -> Size;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -118,6 +126,11 @@ pub struct RgbaInfo<'a> {
 	pub width: u32,
 	pub height: u32,
 	pub data: &'a [u8],
+}
+
+pub enum GraphicsBackendEvent<G: GraphicsBackend> {
+	OutputAdded(G::OutputHandle),
+	OutputRemoved(G::OutputHandle),
 }
 
 #[derive(Debug, Clone, PartialEq)]
