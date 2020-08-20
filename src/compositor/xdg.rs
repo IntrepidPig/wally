@@ -185,7 +185,18 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 												},
 											);
 										}
-										xdg_surface::Request::GetPopup { .. } => {}
+										xdg_surface::Request::GetPopup {
+											id,
+											parent: _parent,
+											positioner: _positioner,
+										} => id.quick_assign(
+											move |_main, request: xdg_popup::Request, _| match request {
+												xdg_popup::Request::Destroy => {}
+												xdg_popup::Request::Grab { .. } => {}
+												xdg_popup::Request::Reposition { .. } => {}
+												_ => log::warn!("Got unknown request for xdg_popup"),
+											},
+										),
 										xdg_surface::Request::SetWindowGeometry { x, y, width, height } => {
 											let solid_window_geometry = Rect::new(x, y, width as u32, height as u32);
 											let mut xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
