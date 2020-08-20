@@ -169,8 +169,28 @@ pub struct PointerMotion {
 pub struct PointerButton {
 	pub serial: u32,
 	pub time: u32,
-	pub button: u32,
+	pub button: Button,
 	pub state: PressState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Button {
+	Left,
+	Right,
+	Middle,
+	Other(u8),
+}
+
+impl Button {
+	pub fn to_wl(self) -> u32 {
+		// According to smithay, this is how wayland sees mouse buttons
+		match self {
+			Button::Left => 0x110,
+			Button::Right => 0x111,
+			Button::Middle => 0x112,
+			Button::Other(b) => b.into(),
+		}
+	}
 }
 
 // This is ridiculous

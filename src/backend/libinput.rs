@@ -1,3 +1,7 @@
+use std::{
+	convert::{TryInto}
+};
+
 use calloop::{
 	channel::{self, Channel, Sender},
 	generic::{EventedRawFd, Generic},
@@ -7,7 +11,7 @@ use thiserror::Error;
 
 use crate::backend::{PointerButton, PointerMotion};
 use crate::{
-	backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress},
+	backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress, Button},
 	compositor::Compositor,
 };
 
@@ -133,7 +137,12 @@ fn libinput_event_to_backend_event(event: input::Event) -> Option<BackendEvent> 
 			input::event::PointerEvent::Button(button) => BackendEvent::PointerButton(PointerButton {
 				serial: crate::compositor::get_input_serial(),
 				time: button.time(),
-				button: button.button(),
+				button: match button.button() {
+					0x110 => Button::Left,
+					0x111 => Button::Right,
+					0x112 => Button::Middle,
+					b => Button::Other(b.try_into().unwrap()),
+				},
 				state: button.button_state().into(),
 			}),
 			_ => {

@@ -608,7 +608,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 						pointer.button(
 							pointer_button.serial,
 							pointer_button.time,
-							pointer_button.button,
+							pointer_button.button.to_wl(),
 							pointer_button.state.into(),
 						);
 					}

@@ -7,7 +7,7 @@ use winit::{
 	event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::backend::{BackendEvent, InputBackend, KeyPress, PointerButton, PointerMotion};
+use crate::backend::{BackendEvent, InputBackend, KeyPress, PointerButton, PointerMotion, Button};
 use std::sync::Arc;
 
 pub struct WinitInputBackend {
@@ -102,14 +102,24 @@ impl WinitInputBackend {
 						device_id: _device_id,
 						event: winit::event::DeviceEvent::Button { button, state },
 					} => {
-						if pointer_grabbed {
-							Some(BackendEvent::PointerButton(PointerButton {
-								serial: crate::compositor::get_input_serial(),
-								time: start.elapsed().as_millis() as u32,
-								button,
-								state: state.into(),
-							}))
+						if let Some(button) = match button {
+							1 => Some(Button::Left),
+							2 => Some(Button::Middle),
+							3 => Some(Button::Right),
+							_ => None,
+						} {
+							if pointer_grabbed {
+								Some(BackendEvent::PointerButton(PointerButton {
+									serial: crate::compositor::get_input_serial(),
+									time: start.elapsed().as_millis() as u32,
+									button,
+									state: state.into(),
+								}))
+							} else {
+								None
+							}
 						} else {
+							log::warn!("Winit backend got unknown mouse button {}", button);
 							None
 						}
 					}
