@@ -82,7 +82,11 @@ fn main() {
 #[allow(unused)]
 fn start_winit_compositor(event_loop: calloop::EventLoop<()>) {
 	let winit_event_loop = winit::event_loop::EventLoop::new();
-	let window = winit::window::Window::new(&winit_event_loop).unwrap();
+	let window = winit::window::WindowBuilder::new()
+		.with_inner_size(winit::dpi::PhysicalSize::new(1080, 720))
+		.with_resizable(false)
+		.build(&winit_event_loop)
+		.unwrap();
 	let window_size = window.inner_size();
 	let (mut renderer, mut present_backend, window) = festus::renderer::Renderer::new::<
 		SwapchainPresentBackend<WinitSurfaceCreator>,
@@ -92,17 +96,20 @@ fn start_winit_compositor(event_loop: calloop::EventLoop<()>) {
 	let graphics_backend = VulkanGraphicsBackend::new(renderer, present_backend);
 
 	let (tx, rx) = std::sync::mpsc::channel();
-	std::thread::spawn(move || {
-		let input_backend = WinitInputBackend::new();
-		let sender = input_backend.get_sender();
-		tx.send(sender);
-		let mut event_loop = calloop::EventLoop::new().expect("Failed to create event loop");
-		let handle = event_loop.handle();
-		let mut compositor = compositor::Compositor::new(input_backend, graphics_backend, handle)
-			.expect("Failed to initialize compositor");
-		compositor.init();
-		compositor.start(&mut event_loop);
-	});
+	std::thread::Builder::new()
+		.name(String::from("winit_compositor"))
+		.spawn(move || {
+			let input_backend = WinitInputBackend::new();
+			let sender = input_backend.get_sender();
+			tx.send(sender);
+			let mut event_loop = calloop::EventLoop::new().expect("Failed to create event loop");
+			let handle = event_loop.handle();
+			let mut compositor = compositor::Compositor::new(input_backend, graphics_backend, handle)
+				.expect("Failed to initialize compositor");
+			compositor.init();
+			compositor.start(&mut event_loop);
+		})
+		.unwrap();
 	let sender = rx.recv().unwrap();
 	WinitInputBackend::start(sender, winit_event_loop, window);
 }
