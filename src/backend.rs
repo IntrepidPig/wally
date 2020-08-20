@@ -43,9 +43,9 @@ pub trait GraphicsBackend: Sized + fmt::Debug {
 	type TextureHandle: Copy + Send + fmt::Debug;
 	type MvpBufferHandle: Copy + Send + fmt::Debug;
 
-	type RenderTargetHandle: Copy + Send + fmt::Debug + 'static;
+	type RenderTargetHandle: Copy + Send + Sync + fmt::Debug + 'static;
 
-	type OutputHandle: Copy + Send + fmt::Debug;
+	type OutputHandle: Copy + Send + Sync + fmt::Debug;
 
 	fn update(&mut self) -> Result<(), Self::Error>;
 

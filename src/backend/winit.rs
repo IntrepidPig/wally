@@ -7,7 +7,7 @@ use winit::{
 	event_loop::{ControlFlow, EventLoop},
 };
 
-use crate::backend::{BackendEvent, InputBackend, KeyPress, PointerButton, PointerMotion, Button};
+use crate::backend::{BackendEvent, Button, InputBackend, KeyPress, PointerButton, PointerMotion};
 use std::sync::Arc;
 
 pub struct WinitInputBackend {

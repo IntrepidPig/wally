@@ -1,6 +1,4 @@
-use std::{
-	convert::{TryInto}
-};
+use std::convert::TryInto;
 
 use calloop::{
 	channel::{self, Channel, Sender},
@@ -11,7 +9,7 @@ use thiserror::Error;
 
 use crate::backend::{PointerButton, PointerMotion};
 use crate::{
-	backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress, Button},
+	backend::{BackendEvent, Button, GraphicsBackend, InputBackend, KeyPress},
 	compositor::Compositor,
 };
 

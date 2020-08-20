@@ -3,12 +3,13 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use wayland_protocols::xdg_shell::server::{xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
+use wayland_protocols::xdg_shell::server::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
 use wayland_server::{Filter, Main};
 
 use crate::{
 	backend::{GraphicsBackend, InputBackend},
 	compositor::{prelude::*, role::Role, surface::SurfaceData, Compositor},
+	renderer::Output,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -145,11 +146,30 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 											drop(surface_data_lock);
 											let mut xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
 											xdg_surface_data_lock.xdg_surface_role =
-												Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel));
+												Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
 											drop(xdg_surface_data_lock);
 
 											let mut inner_lock = inner.lock().unwrap();
 											inner_lock.window_manager.manager_impl.add_surface(surface.clone());
+
+											// Send output enter events for every output viewport this surface intersects
+											// TODO: handle surface moves and possibly output viewport changes
+											let surface_data = surface.get_synced::<SurfaceData<G>>();
+											let surface_data_lock = surface_data.lock().unwrap();
+											let client_info = inner_lock
+												.client_manager
+												.get_client_info(xdg_toplevel.as_ref().client().unwrap());
+											let client_info_lock = client_info.lock().unwrap();
+											for output in &client_info_lock.outputs {
+												let output_data = output.get::<Output<G>>();
+												if let Some(surface_geometry) =
+													surface_data_lock.try_get_surface_geometry()
+												{
+													if surface_geometry.intersects(output_data.viewport) {
+														surface.enter(output);
+													}
+												}
+											}
 
 											xdg_toplevel_id.quick_assign(
 												move |_main, request: xdg_toplevel::Request, _| {

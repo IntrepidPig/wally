@@ -6,7 +6,7 @@ use thiserror::Error;
 use wayland_server::protocol::*;
 
 use crate::{
-	backend::{GraphicsBackend, RgbaInfo, Vertex, GraphicsBackendEvent},
+	backend::{GraphicsBackend, RgbaInfo, Vertex},
 	compositor::{prelude::*, surface::SurfaceData},
 };
 

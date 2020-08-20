@@ -14,7 +14,7 @@ use calloop::{
 };
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use wayland_server::{protocol::*, Client, Display, Filter, Interface, Main, Resource};
+use wayland_server::{protocol::*, Client, Display, Filter, Global, Interface, Main, Resource};
 
 use crate::{
 	backend::{BackendEvent, GraphicsBackend, InputBackend, ShmBuffer},
@@ -22,12 +22,12 @@ use crate::{
 	compositor::prelude::*,
 	compositor::surface::SurfaceData,
 	input::KeyboardState,
-	renderer::Renderer,
+	renderer::{Output, Renderer},
 };
 
 pub mod client;
-pub mod role;
 pub mod output;
+pub mod role;
 pub mod seat;
 pub mod shell;
 pub mod shm;
@@ -124,6 +124,7 @@ pub struct CompositorInner<I: InputBackend, G: GraphicsBackend> {
 	pub pointer_focus: Option<wl_surface::WlSurface>,
 	pub keyboard_state: Synced<KeyboardState>,
 	pub keyboard_focus: Option<wl_surface::WlSurface>,
+	pub output_globals: Vec<(Global<wl_output::WlOutput>, Output<G>)>,
 	phantom: PhantomData<I>,
 }
 
@@ -195,6 +196,7 @@ impl ClientManager {
 				client,
 				keyboards: Vec::new(),
 				pointers: Vec::new(),
+				outputs: Vec::new(),
 			})));
 			Arc::clone(self.clients.last().unwrap())
 		}
@@ -284,6 +286,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			pointer_focus: None,
 			keyboard_state,
 			keyboard_focus: None,
+			output_globals: Vec::new(),
 			phantom: PhantomData,
 		};
 
