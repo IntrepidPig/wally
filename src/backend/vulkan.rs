@@ -10,7 +10,9 @@ use festus::{
 	},
 };
 use thiserror::Error;
-use wayland_server::protocol::*;
+use wl_server::{
+	protocol::*,
+};
 
 use super::RgbaInfo;
 use crate::backend::{

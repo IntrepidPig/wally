@@ -9,28 +9,27 @@ impl<G: GraphicsBackend + 'static> WindowManager<G> {
 		Self { manager_impl }
 	}
 
-	pub fn get_surface_under_point(&self, point: Point) -> Option<wl_surface::WlSurface> {
+	pub fn get_surface_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
 		self.manager_impl.get_surface_under_point(point)
 	}
 
-	pub fn get_window_under_point(&self, point: Point) -> Option<wl_surface::WlSurface> {
+	pub fn get_window_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
 		self.manager_impl.get_window_under_point(point)
 	}
 }
 
 pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
-	fn add_surface(&mut self, surface: wl_surface::WlSurface);
+	fn add_surface(&mut self, surface: Resource<WlSurface>);
 
-	fn surfaces_ascending<'a>(&'a self) -> Box<dyn Iterator<Item = &'a wl_surface::WlSurface> + 'a>;
+	fn surfaces_ascending(&self) -> Box<dyn Iterator<Item = Resource<WlSurface>> + '_>;
 
-	fn handle_surface_resize(&mut self, surface: wl_surface::WlSurface, size: Size);
+	fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, size: Size);
 
-	fn get_surface_under_point(&self, point: Point) -> Option<wl_surface::WlSurface> {
+	fn get_surface_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
 		let mut got_surface = None;
 		for surface in self.surfaces_ascending() {
-			let surface_data = surface.get_synced::<SurfaceData<G>>();
-			let surface_data_lock = surface_data.lock().unwrap();
-			if surface_data_lock
+			let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+			if surface_data.borrow()
 				.try_get_surface_geometry()
 				.map(|geometry| geometry.contains_point(point))
 				.unwrap_or(false)
@@ -38,15 +37,14 @@ pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
 				got_surface = Some(surface);
 			}
 		}
-		got_surface.cloned()
+		got_surface
 	}
 
-	fn get_window_under_point(&self, point: Point) -> Option<wl_surface::WlSurface> {
+	fn get_window_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
 		let mut got_surface = None;
 		for surface in self.surfaces_ascending() {
-			let surface_data = surface.get_synced::<SurfaceData<G>>();
-			let surface_data_lock = surface_data.lock().unwrap();
-			if surface_data_lock
+			let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+			if surface_data.borrow()
 				.try_get_window_geometry()
 				.map(|geometry| geometry.contains_point(point))
 				.unwrap_or(false)
@@ -54,37 +52,35 @@ pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
 				got_surface = Some(surface);
 			}
 		}
-		got_surface.cloned()
+		got_surface
 	}
 }
 
 pub struct SurfaceTree<G: GraphicsBackend + ?Sized> {
 	pub(crate) nodes: Vec<Node>,
-	pub pointer: Arc<Mutex<PointerState>>,
 	phantom: PhantomData<G>,
 }
 
 #[derive(Clone)]
 pub struct Node {
-	pub wl_surface: wl_surface::WlSurface,
+	pub surface: Resource<WlSurface>,
 }
 
-impl From<wl_surface::WlSurface> for Node {
-	fn from(wl_surface: wl_surface::WlSurface) -> Self {
-		Node { wl_surface }
+impl From<Resource<WlSurface>> for Node {
+	fn from(surface: Resource<WlSurface>) -> Self {
+		Node { surface }
 	}
 }
 
 impl<G: GraphicsBackend + 'static> SurfaceTree<G> {
-	pub fn new(pointer: Arc<Mutex<PointerState>>) -> Self {
+	pub fn new() -> Self {
 		Self {
 			nodes: Vec::new(),
-			pointer,
 			phantom: PhantomData,
 		}
 	}
 
-	pub fn add_surface(&mut self, surface: wl_surface::WlSurface) {
+	pub fn add_surface(&mut self, surface: Resource<WlSurface>) {
 		self.nodes.push(Node::from(surface));
 	}
 
@@ -95,22 +91,6 @@ impl<G: GraphicsBackend + 'static> SurfaceTree<G> {
 	pub fn nodes_descending(&self) -> impl Iterator<Item = &Node> {
 		self.nodes_ascending().collect::<Vec<_>>().into_iter().rev()
 	}
-
-	pub fn destroy_surface(&mut self, surface: wl_surface::WlSurface) {
-		// This bit right here doesn't work because dead surfaces lose their ids
-		if let Some(i) = self
-			.nodes
-			.iter()
-			.enumerate()
-			.find(|(_i, test_surface)| test_surface.wl_surface == surface)
-			.map(|x| x.0)
-		{
-			let surface = self.nodes.remove(i);
-			let surface_data = surface.wl_surface.get_synced::<SurfaceData<G>>();
-			let mut surface_data_lock = surface_data.lock().unwrap();
-			surface_data_lock.destroy();
-		}
-	}
 }
 
 pub struct DumbWindowManagerBehavior<G: GraphicsBackend> {
@@ -118,37 +98,34 @@ pub struct DumbWindowManagerBehavior<G: GraphicsBackend> {
 }
 
 impl<G: GraphicsBackend + 'static> DumbWindowManagerBehavior<G> {
-	pub fn new(pointer_state: Synced<PointerState>) -> Self {
+	pub fn new() -> Self {
 		Self {
-			surface_tree: SurfaceTree::new(pointer_state),
+			surface_tree: SurfaceTree::new(),
 		}
 	}
 }
 
 impl<G: GraphicsBackend + 'static> WindowManagerBehavior<G> for DumbWindowManagerBehavior<G> {
-	fn add_surface(&mut self, surface: wl_surface::WlSurface) {
-		let surface_data = surface.get_synced::<SurfaceData<G>>();
-		let mut surface_data_lock = surface_data.lock().unwrap();
-		if let Some(ref _role) = surface_data_lock.role {
+	fn add_surface(&mut self, surface: Resource<WlSurface>) {
+		let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		if let Some(ref _role) = surface_data.borrow().role {
+			// TODO: get the position and size from the role... unless you don't want to. it is dumb after all
 			let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
 			let size = Size::new(500, 375);
-			surface_data_lock.set_window_position(position);
-			surface_data_lock.resize_window(size);
+			surface_data.borrow_mut().set_window_position(position);
+			surface_data.borrow_mut().resize_window(size);
 		} else {
 			panic!("Can't add a surface without a role");
 		}
-		drop(surface_data_lock);
 		self.surface_tree.add_surface(surface);
 	}
 
-	fn handle_surface_resize(&mut self, surface: wl_surface::WlSurface, _new_size: Size) {
-		let surface_data = surface.get_synced::<SurfaceData<G>>();
-		let mut _surface_data_lock = surface_data.lock().unwrap();
+	fn handle_surface_resize(&mut self, _surface: Resource<WlSurface>, _new_size: Size) {
 		log::warn!("Surface resize handling not implemented");
 	}
 
-	fn surfaces_ascending<'a>(&'a self) -> Box<dyn Iterator<Item = &'a wl_surface::WlSurface> + 'a> {
-		Box::new(self.surface_tree.nodes_ascending().map(|node| &node.wl_surface))
+	fn surfaces_ascending(&self) -> Box<dyn Iterator<Item = Resource<WlSurface>> + '_> {
+		Box::new(self.surface_tree.nodes_ascending().map(|node| node.surface.clone()))
 	}
 }
 

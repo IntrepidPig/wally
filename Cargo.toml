@@ -5,9 +5,12 @@ authors = ["IntrepidPig <bennycaguilera@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+wl_server = { path = "../../wl/wl_server" }
+wl_protocols = { path = "../../wl/wl_protocols" }
+
 winit = "0.22.0"
-wayland-server = { version = "0.27" }
-wayland-protocols = { version = "0.27", features = ["server", "unstable_protocols"] }
+#wayland-server = { version = "0.27" }
+#wayland-protocols = { version = "0.27", features = ["server", "unstable_protocols"] }
 calloop = "0.4.4"
 log = "0.4.8"
 fern = { version = "0.5.9", features = ["colored"] }

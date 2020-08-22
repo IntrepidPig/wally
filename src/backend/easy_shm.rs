@@ -4,7 +4,9 @@ use std::{
 };
 
 use nix::sys::mman;
-use wayland_server::protocol::*;
+use wl_server::{
+	protocol::*,
+};
 
 use crate::backend::ShmBuffer;
 

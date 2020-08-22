@@ -1,7 +1,79 @@
 use crate::{backend::ShmBuffer, compositor::prelude::*, renderer::SurfaceRendererData};
 
+impl<I: InputBackend, G: GraphicsBackend + 'static> CompositorState<I, G> {
+	pub fn handle_surface_request(&mut self, this: Resource<WlSurface>, request: WlSurfaceRequest) {
+		match request {
+			WlSurfaceRequest::Destroy => self.handle_surface_destroy(this),
+			WlSurfaceRequest::Attach(request) => self.handle_surface_attach(this, request),
+			WlSurfaceRequest::Damage(_request) => {},
+			WlSurfaceRequest::Frame(request) => self.handle_surface_frame(this, request),
+			WlSurfaceRequest::SetOpaqueRegion { .. } => {},
+			WlSurfaceRequest::SetInputRegion { .. } => {},
+			WlSurfaceRequest::Commit => self.handle_surface_commit(this),
+			WlSurfaceRequest::SetBufferTransform { .. } => {},
+			WlSurfaceRequest::SetBufferScale { .. } => {},
+			WlSurfaceRequest::DamageBuffer { .. } => {},
+		}
+	}
+
+	pub fn handle_surface_destroy(&mut self, this: Resource<WlSurface>) {
+		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let mut surface_data = surface_data.borrow_mut();
+		match self.graphics_state.renderer.destroy_surface_renderer_data(surface_data.renderer_data.take().unwrap()) {
+			Ok(()) => {},
+			Err(e) => {
+				log::error!("Failed to destroy surface renderer data: {}", e);
+			},
+		};
+		this.destroy();
+	}
+
+	pub fn handle_surface_attach(&mut self, this: Resource<WlSurface>, request: wl_surface::AttachRequest) {
+		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data = &mut *surface_data.borrow_mut();
+
+		// Release the previously attached buffer if it hasn't been committed yet
+		if let Some(old_buffer) = surface_data.pending_state.attached_buffer.take()
+		{
+			if let Some((old_buffer, _point)) = old_buffer {
+				old_buffer.send_event(WlBufferEvent::Release);
+			}
+		};
+		// Attach the new buffer to the surface
+		if let Some(buffer) = request.buffer {
+			surface_data.pending_state.attached_buffer = Some(Some((buffer, Point::new(request.x, request.y))));
+		} else {
+			// Attaching a null buffer to a surface is equivalent to unmapping it.
+			surface_data.pending_state.attached_buffer = Some(None);
+		}
+	}
+
+	pub fn handle_surface_commit(&mut self, this: Resource<WlSurface>) {
+		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let mut surface_data = surface_data.borrow_mut();
+
+		// TODO: relying on the impl of ShmBuffer to ascertain the size of the buffer is probably unsound if the ShmBuffer impl lies.
+		// So that trait should either be unsafe, or Shm should be moved out of the Rendering backend and EasyShm should be made canonical
+		surface_data.commit_pending_state();
+		if let Some((ref committed_buffer, _point)) = surface_data.committed_buffer {
+			let buffer_data = committed_buffer.get_data::<RefCell<G::ShmBuffer>>().unwrap();
+			let buffer_data = buffer_data.borrow();
+			let _new_size = Size::new(buffer_data.width(), buffer_data.height());
+
+			log::debug!("TODO: handle surface resize as window manager");
+		}
+	}
+
+	pub fn handle_surface_frame(&mut self, this: Resource<WlSurface>, request: wl_surface::FrameRequest) {
+		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data = &mut *surface_data.borrow_mut();
+		let callback = request.callback.register_fn((), |_, _, _| {});
+		surface_data.callback = Some(callback);
+	}
+}
+
 pub struct PendingState {
-	pub attached_buffer: Option<Option<(wl_buffer::WlBuffer, Point)>>,
+	pub attached_buffer: Option<Option<(Resource<WlBuffer>, Point)>>,
 	pub input_region: Option<Rect>,
 }
 
@@ -13,28 +85,6 @@ impl PendingState {
 		}
 	}
 }
-
-/* pub trait SurfaceExt<G> {
-	fn focus(&self, point: Point);
-}
-
-impl<G: GraphicsBackend + 'static> SurfaceExt<G> for wl_surface::WlSurface {
-	fn focus(&self, point: Point) {
-		let surface_data = self.get_synced::<SurfaceData<G>>();
-		let surface_data_lock = surface_data.lock().unwrap();
-		let client_info_lock = surface_data_lock.client_info.lock().unwrap();
-		for pointer in &client_info_lock.pointers {
-			pointer.enter(
-				crate::compositor::get_input_serial(),
-				self,
-				point.x as f64,
-				point.y as f64,
-			);
-		}
-
-	}
-}
- */
 /// This is the data associated with every surface. It is used to store the pending and committed state of the surface
 /// (including pending and committed WlBuffers), the data required by the graphics backend for each surface, the
 /// location and size of the surface, and the input devices useable by the surface.
@@ -47,16 +97,15 @@ impl<G: GraphicsBackend + 'static> SurfaceExt<G> for wl_surface::WlSurface {
 ///
 /// The surface's role determines how it's geometry is decided.
 pub struct SurfaceData<G: GraphicsBackend> {
-	/// Contains the client, pointers, and keyboards associated with this surface
-	pub client_info: Synced<ClientInfo>,
+	pub client: Handle<Client>,
 	/// All of the pending state that has been requested by the client but not yet committed
 	pub pending_state: PendingState,
 	/// The most recently committed buffer to this surface
-	pub committed_buffer: Option<(wl_buffer::WlBuffer, Point)>,
+	pub committed_buffer: Option<(Resource<WlBuffer>, Point)>,
 	/// This field is updated whenever a new buffer is committed to avoid re-locking the ShmBuffer mutex
 	pub buffer_size: Option<Size>,
 	pub input_region: Option<Rect>,
-	pub callback: Option<wl_callback::WlCallback>,
+	pub callback: Option<Resource<WlCallback>>,
 	pub role: Option<Role>,
 	/// The data that is necessary for the specific graphics backend to render this surface
 	pub renderer_data: Option<SurfaceRendererData<G>>,
@@ -69,9 +118,9 @@ pub struct SurfaceData<G: GraphicsBackend> {
 }
 
 impl<G: GraphicsBackend + 'static> SurfaceData<G> {
-	pub fn new(client_info: Synced<ClientInfo>, renderer_data: SurfaceRendererData<G>) -> Self {
+	pub fn new(client: Handle<Client>, renderer_data: SurfaceRendererData<G>) -> Self {
 		Self {
-			client_info,
+			client,
 			pending_state: PendingState::new(),
 			committed_buffer: None,
 			buffer_size: None,
@@ -161,25 +210,29 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 	/// Commit all pending state to this surface
 	pub fn commit_pending_state(&mut self) {
 		if let Some(new_buffer) = self.pending_state.attached_buffer.take() {
-			if let Some(new_buffer) = new_buffer.as_ref() {
-				let committed_buffer_data = new_buffer.0.get_synced::<G::ShmBuffer>();
-				let committed_buffer_data_lock = committed_buffer_data.lock().unwrap();
+			if let Some((new_buffer, point)) = new_buffer.as_ref() {
+				if point.x != 0 || point.y != 0 {
+					// TODO
+					log::error!("Buffer attachments with a specific position are not supported yet");
+				}
+				let committed_buffer_data = new_buffer.get_data::<RefCell<G::ShmBuffer>>().unwrap();
+				let committed_buffer_data = committed_buffer_data.borrow();
 				if let Some(role) = self.role.as_mut() {
 					role.set_surface_size(Size::new(
-						committed_buffer_data_lock.width() as u32,
-						committed_buffer_data_lock.height() as u32,
+						committed_buffer_data.width() as u32,
+						committed_buffer_data.height() as u32,
 					));
 				}
 				self.buffer_size = Some(Size::new(
-					committed_buffer_data_lock.width() as u32,
-					committed_buffer_data_lock.height() as u32,
+					committed_buffer_data.width() as u32,
+					committed_buffer_data.height() as u32,
 				))
 			} else {
 				self.buffer_size = None;
 			}
-			if let Some(old_buffer) = std::mem::replace(&mut self.committed_buffer, new_buffer) {
+			if let Some((old_buffer, _point)) = std::mem::replace(&mut self.committed_buffer, new_buffer) {
 				// Release the previously attached buffer if it hasn't been committed yet
-				old_buffer.0.release();
+				old_buffer.send_event(WlBufferEvent::Release);
 			}
 		}
 		if let Some(new_input_region) = self.pending_state.input_region.take() {
@@ -187,16 +240,16 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 		}
 	}
 
-	pub fn destroy(&mut self) {
-		// TODO: does this need to destroy the SurfaceRenderData too?
-		if let Some((buffer, _)) = self.pending_state.attached_buffer.take().and_then(|opt| opt) {
-			buffer.release();
+	/* pub fn destroy(&mut self) {
+		// TODO: does this need to destroy the SurfaceRenderData too? TODO! yes, yes it does
+		if let Some((buffer, _point)) = self.pending_state.attached_buffer.take().and_then(|opt| opt) {
+			buffer.send_event(WlBufferEvent::Release);
 		}
-		if let Some((buffer, _)) = self.committed_buffer.take() {
-			buffer.release();
+		if let Some((buffer, _point)) = self.committed_buffer.take() {
+			buffer.send_event(WlBufferEvent::Release)
 		}
 		if let Some(mut role) = self.role.take() {
 			role.destroy();
 		}
-	}
+	} */
 }

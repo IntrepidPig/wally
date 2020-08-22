@@ -1,8 +1,23 @@
-use wayland_server::{protocol::*, Client};
+use wl_server::{
+	protocol::*,
+};
 
-pub struct ClientInfo {
-	pub(crate) client: Client,
-	pub(crate) keyboards: Vec<wl_keyboard::WlKeyboard>,
-	pub(crate) pointers: Vec<wl_pointer::WlPointer>,
-	pub(crate) outputs: Vec<wl_output::WlOutput>,
+use crate::{
+	compositor::prelude::*,
+};
+
+pub struct ClientState {
+	pub(crate) keyboards: Vec<Resource<WlKeyboard>>,
+	pub(crate) pointers: Vec<Resource<WlPointer>>,
+	pub(crate) outputs: Vec<Resource<WlOutput>>,
+}
+
+impl ClientState {
+	pub fn new() -> Self {
+		Self {
+			keyboards: Vec::new(),
+			pointers: Vec::new(),
+			outputs: Vec::new(),
+		}
+	}
 }

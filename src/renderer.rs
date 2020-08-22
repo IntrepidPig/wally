@@ -3,7 +3,6 @@ use std::os::unix::io::RawFd;
 // TODO remove this festus dependency
 use festus::{geometry::*, math::*};
 use thiserror::Error;
-use wayland_server::protocol::*;
 
 use crate::{
 	backend::{GraphicsBackend, RgbaInfo, Vertex},
@@ -184,11 +183,10 @@ impl<G: GraphicsBackend> Renderer<G> {
 	// TODO: handle other sorts of buffers (DMA buffers!)
 	pub fn create_texture_from_wl_buffer(
 		&mut self,
-		wl_buffer: wl_buffer::WlBuffer,
+		wl_buffer: Resource<WlBuffer>,
 	) -> Result<G::TextureHandle, G::Error> {
-		let buffer_data = wl_buffer.get_synced::<G::ShmBuffer>();
-		let buffer_data_lock = &mut *buffer_data.lock().unwrap();
-		let texture_handle = self.backend.create_texture_from_shm_buffer(buffer_data_lock)?;
+		let buffer_data = wl_buffer.get_data::<G::ShmBuffer>().unwrap();
+		let texture_handle = self.backend.create_texture_from_shm_buffer(&*buffer_data)?;
 		Ok(texture_handle)
 	}
 
@@ -290,19 +288,23 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 	}
 
 	/// Draw a surface on
-	pub fn draw_surface(&mut self, surface: wl_surface::WlSurface) -> Result<(), G::Error> {
-		let surface_data = surface.get_synced::<SurfaceData<G>>();
-		let surface_data_lock = &mut *surface_data.lock().unwrap();
+	pub fn draw_surface(&mut self, surface: Resource<WlSurface>) -> Result<(), G::Error> {
+		let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let mut surface_data = surface_data.borrow_mut();
 
 		// If the surface has been committed a buffer that hasn't been uploaded to the graphics
 		// backend yet, do that now.
 		// TODO: don't ignore the buffer/texture offset
-		if let Some(committed_buffer) = surface_data_lock.committed_buffer.take() {
+		if let Some((committed_buffer, point)) = surface_data.committed_buffer.take() {
+			if point.x != 0 || point.y != 0 {
+				// TODO
+				log::error!("Buffer attachments with a specific position are not supported yet");
+			}
 			let texture = self
 				.renderer
-				.create_texture_from_wl_buffer(committed_buffer.clone().0)
+				.create_texture_from_wl_buffer(committed_buffer.clone())
 				.unwrap();
-			if let Some(ref mut renderer_data) = surface_data_lock.renderer_data {
+			if let Some(ref mut renderer_data) = surface_data.renderer_data {
 				if let Some(ref mut plane) = renderer_data.plane {
 					let old_texture = std::mem::replace(&mut plane.texture_handle, texture);
 					self.renderer.destroy_texture(old_texture)?;
@@ -316,12 +318,12 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 			} else {
 				panic!("Tried to draw a surface whose renderer data has been destroyed");
 			}
-			committed_buffer.0.release();
+			committed_buffer.send_event(WlBufferEvent::Release);
 		}
 
 		// If the surface has known geometry and a plane ready for drawing, write the geometry data to the surfaces MVP buffer and draw the surface
-		let surface_geometry_opt = surface_data_lock.try_get_surface_geometry();
-		if let Some(ref mut plane) = surface_data_lock
+		let surface_geometry_opt = surface_data.try_get_surface_geometry();
+		if let Some(ref mut plane) = surface_data
 			.renderer_data
 			.as_mut()
 			.and_then(|renderer_data| renderer_data.plane.as_mut())
@@ -347,10 +349,12 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 			}
 		}
 
-		surface_data_lock
-			.callback
-			.take()
-			.map(|callback| callback.done(crate::compositor::get_input_serial()));
+		if let Some(callback) = surface_data.callback.take() {
+			let done_event = wl_callback::DoneEvent {
+				callback_data: crate::compositor::get_input_serial(),
+			};
+			callback.send_event(WlCallbackEvent::Done(done_event));
+		}
 
 		Ok(())
 	}

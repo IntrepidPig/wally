@@ -1,54 +1,65 @@
-use std::sync::Arc;
-
-use wayland_server::{protocol::*, Filter, Main};
+use std::ffi::CString;
 
 use crate::{
 	backend::{GraphicsBackend, InputBackend},
-	compositor::Compositor,
+	compositor::{Compositor, prelude::*},
 };
 
 impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
-	pub(crate) fn setup_output_global(&mut self) {
-		let graphics_backend_state_lock = self.graphics_backend_state.lock().unwrap();
-		let outputs = graphics_backend_state_lock.renderer.outputs();
+	pub(crate) fn setup_output_globals(&mut self) {
+		let outputs = self.state().graphics_state.renderer.outputs();
 		for output in outputs {
-			let inner = Arc::clone(&self.inner);
-			let output_filter = Filter::new(
-				move |(main, _num): (Main<wl_output::WlOutput>, u32), _filter, _dispatch_data| {
-					let inner = Arc::clone(&inner);
-					let mut inner_lock = inner.lock().unwrap();
-					let output_interface = &*main;
-					let client_info = inner_lock
-						.client_manager
-						.get_client_info(output_interface.as_ref().client().unwrap());
-					let mut client_info_lock = client_info.lock().unwrap();
-					client_info_lock.outputs.push(output_interface.clone());
-					output_interface.as_ref().user_data().set_threadsafe(|| output);
-					output_interface.geometry(
-						output.viewport.x,
-						output.viewport.y,
-						0,
-						0,
-						wl_output::Subpixel::HorizontalBgr,
-						String::from("<unknown>"),
-						String::from("<unknown>"),
-						wl_output::Transform::Normal,
-					);
-					// TODO: don't hardcode
-					output_interface.mode(wl_output::Mode::Current | wl_output::Mode::Preferred, 1920, 1080, 75);
-					if output_interface.as_ref().version() >= 2 {
-						output_interface.scale(1);
-					}
-					output_interface.done();
-					main.quick_assign(move |_main, request, _dispatch_data| match request {
-						wl_output::Request::Release => {}
-						_ => log::warn!("Got unknown request for wl_output"),
-					})
-				},
-			);
-			let output_global = self.display.create_global(2, output_filter);
-			let mut inner_lock = self.inner.lock().unwrap();
-			inner_lock.output_globals.push((output_global, output));
+			let output_global = self.server.register_global::<WlOutput, _>(move |new: NewResource<WlOutput>| {
+				let output_resource = new.register_fn(output, |state, this, request| {
+					let state = state.get_mut::<CompositorState<I, G>>();
+					state.handle_output_request(this, request);
+				});
+
+				let client = output_resource.client();
+				let client = client.get().unwrap();
+				let client_state = client.state::<RefCell<ClientState>>();
+				client_state.borrow_mut().outputs.push(output_resource.clone());
+
+				let geometry_event = wl_output::GeometryEvent {
+					x: output.viewport.x,
+					y: output.viewport.y,
+					physical_width: 0,
+					physical_height: 0,
+					subpixel: wl_output::Subpixel::HorizontalBgr,
+					make: CString::new(String::from("<unknown>")).unwrap().into_bytes_with_nul(),
+					model: CString::new(String::from("<unknown>")).unwrap().into_bytes_with_nul(),
+					transform: wl_output::Transform::Normal,
+				};
+				let mode_event = wl_output::ModeEvent {
+					flags: wl_output::Mode::CURRENT | wl_output::Mode::PREFERRED,
+					width: output.viewport.width as i32,
+					height: output.viewport.height as i32,
+					refresh: 75,
+				};
+				let scale_event = wl_output::ScaleEvent {
+					factor: 1,
+				};
+				output_resource.send_event(WlOutputEvent::Geometry(geometry_event));
+				output_resource.send_event(WlOutputEvent::Mode(mode_event));
+				if true { // TODO: check version >= 2
+					output_resource.send_event(WlOutputEvent::Scale(scale_event));
+				}
+				output_resource.send_event(WlOutputEvent::Done);
+			});
+			
+			self.state_mut().inner.output_globals.push((output_global, output));
 		}
+	}
+}
+
+impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I, G> {
+	pub fn handle_output_request(&mut self, this: Resource<WlOutput>, request: WlOutputRequest) {
+		match request {
+			WlOutputRequest::Release => self.handle_output_release(this),
+		}
+	}
+
+	pub fn handle_output_release(&mut self, _this: Resource<WlOutput>) {
+		log::warn!("Output release handling unimplemented");
 	}
 }

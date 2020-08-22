@@ -1,84 +1,80 @@
-use std::sync::Arc;
-
-use wayland_server::{protocol::*, Filter, Main};
-
 use crate::{
 	backend::{GraphicsBackend, InputBackend},
-	compositor::Compositor,
+	compositor::{Compositor, prelude::*},
 };
 
 impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub fn setup_seat_global(&mut self) {
-		let inner = Arc::clone(&self.inner);
-		let seat_filter = Filter::new(
-			move |(main, version): (Main<wl_seat::WlSeat>, u32), _filter, _dispatch_data| {
-				let inner = Arc::clone(&inner);
-				let seat = &*main;
-				if version >= 2 {
-					seat.name(String::from("WallySeat"));
-				}
-				seat.capabilities(wl_seat::Capability::Pointer | wl_seat::Capability::Keyboard);
-				main.quick_assign(move |_main, request: wl_seat::Request, _dispatch_data| {
-					let inner = Arc::clone(&inner);
-					let mut inner_lock = inner.lock().unwrap();
-					match request {
-						wl_seat::Request::GetPointer { id } => {
-							let pointer = (*id).clone();
-							let resource = pointer.as_ref().clone();
-							inner_lock
-								.client_manager
-								.get_client_info(resource.client().unwrap())
-								.lock()
-								.unwrap()
-								.pointers
-								.push(pointer);
-							id.quick_assign(|_main, request, _dispatch_data| match request {
-								wl_pointer::Request::SetCursor { .. } => {}
-								wl_pointer::Request::Release => {}
-								_ => {
-									log::warn!("Got unknown request for wl_pointer");
-								}
-							})
-						}
-						wl_seat::Request::GetKeyboard { id } => {
-							let keyboard = (*id).clone();
-							let resource = keyboard.as_ref().clone();
-							let keyboard_state = Arc::clone(&inner_lock.keyboard_state);
-							let keyboard_state_lock = keyboard_state.lock().unwrap();
-							keyboard.keymap(
-								wl_keyboard::KeymapFormat::XkbV1,
-								keyboard_state_lock.fd,
-								keyboard_state_lock.keymap_string.as_bytes().len() as u32,
-							);
-							drop(keyboard_state_lock);
-							resource.user_data().set(move || keyboard_state);
-							inner_lock
-								.client_manager
-								.get_client_info(resource.client().unwrap())
-								.lock()
-								.unwrap()
-								.keyboards
-								.push(keyboard);
-							id.quick_assign(|_main, request, _dispatch_data| {
-								match request {
-									wl_keyboard::Request::Release => {
-										// TODO: probably should remove this keyboard from the client at this point
-									}
-									_ => {
-										log::warn!("Got unknown request for wl_keyboard");
-									}
-								}
-							})
-						}
-						wl_seat::Request::GetTouch { .. } => {}
-						wl_seat::Request::Release => {}
-						_ => {
-							log::warn!("Got unknown request for wl_seat");
-						}
-					}
-				});
-			},
-		);
-		self.display.create_global::<wl_seat::WlSeat, _>(6, seat_filter);
+		self.server.register_global(|new: NewResource<WlSeat>| {
+			new.register_fn((), |state, this, request| {
+				let state = state.get_mut::<CompositorState<I, G>>();
+				state.handle_seat_request(this, request);
+			});
+		});
+	}
+}
+
+impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I, G> {
+	pub fn handle_seat_request(&mut self, this: Resource<WlSeat>, request: WlSeatRequest) {
+		match request {
+			WlSeatRequest::GetPointer(request) => self.handle_seat_get_pointer(this, request),
+			WlSeatRequest::GetKeyboard(request) => self.handle_seat_get_keyboard(this, request),
+			WlSeatRequest::GetTouch(_request) => log::warn!("wl_seat::get_touch not implemented"),
+			WlSeatRequest::Release => log::warn!("wl_seat::release not implemented"),
+		}
+	}
+
+	pub fn handle_seat_get_pointer(&mut self, this: Resource<WlSeat>, request: wl_seat::GetPointerRequest) {
+		let pointer = request.id.register_fn((), |state, this, request| {
+			let state = state.get_mut::<Self>();
+			state.handle_pointer_request(this, request);
+		});
+
+		let client = this.client();
+		let client = client.get().unwrap();
+		let client_state = client.state::<RefCell<ClientState>>();
+		client_state.borrow_mut().pointers.push(pointer);
+	}
+
+	pub fn handle_pointer_request(&mut self, this: Resource<WlPointer>, request: WlPointerRequest) {
+		match request {
+			WlPointerRequest::SetCursor(_request) => log::warn!("wl_pointer::set_cursor not implemented"),
+			WlPointerRequest::Release => self.handle_pointer_release(this),
+		}
+	}
+
+	pub fn handle_pointer_release(&mut self, this: Resource<WlPointer>) {
+		this.client().get().unwrap().state::<RefCell<ClientState>>().borrow_mut().pointers.retain(|pointer| !pointer.is(&this));
+		this.destroy();
+	}
+
+	pub fn handle_seat_get_keyboard(&mut self, this: Resource<WlSeat>, request: wl_seat::GetKeyboardRequest) {
+		let keyboard = request.id.register_fn((), |state, this, request| {
+			let state = state.get_mut::<Self>();
+			state.handle_keyboard_request(this, request);
+		});
+
+		let keymap_event = wl_keyboard::KeymapEvent {
+			format: wl_keyboard::KeymapFormat::XkbV1,
+			fd: self.inner.keyboard_state.fd,
+			size: self.inner.keyboard_state.keymap_string.as_bytes().len() as u32,
+		};
+		keyboard.send_event(WlKeyboardEvent::Keymap(keymap_event));
+
+		let client = this.client();
+		let client = client.get().unwrap();
+		let client_state = client.state::<RefCell<ClientState>>();
+		client_state.borrow_mut().keyboards.push(keyboard);
+	}
+
+	pub fn handle_keyboard_request(&mut self, this: Resource<WlKeyboard>, request: WlKeyboardRequest) {
+		match request {
+			WlKeyboardRequest::Release => self.handle_keyboard_release(this),
+		}
+	}
+
+	pub fn handle_keyboard_release(&mut self, this: Resource<WlKeyboard>) {
+		this.client().get().unwrap().state::<RefCell<ClientState>>().borrow_mut().keyboards.retain(|pointer| !pointer.is(&this));
+		this.destroy();
 	}
 }

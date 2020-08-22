@@ -1,49 +1,29 @@
 use std::{
 	fmt,
-	sync::{Arc, Mutex},
 };
 
-use wayland_protocols::xdg_shell::server::{xdg_popup, xdg_positioner, xdg_surface, xdg_toplevel, xdg_wm_base};
-use wayland_server::{Filter, Main};
+use wl_protocols::xdg_shell::*;
 
 use crate::{
 	backend::{GraphicsBackend, InputBackend},
-	compositor::{prelude::*, role::Role, surface::SurfaceData, Compositor},
+	compositor::{prelude::*, surface::SurfaceData, Compositor},
 	renderer::Output,
 };
-
-#[derive(Debug, Default, Clone)]
-pub struct XdgSurfacePendingState {
-	solid_window_geometry: Option<Rect>,
-}
 
 // This object serves as the Role for a WlSurface, and so it is owned by the WlSurface. As such, it
 // should not contain a strong reference to the WlSurface or a reference cycle would be created.
 #[derive(Debug, Clone)]
 pub struct XdgSurfaceData {
+	pub parent: Resource<WlSurface>,
 	pub pending_state: XdgSurfacePendingState,
 	pub solid_window_geometry: Option<Rect>,
 	pub xdg_surface_role: Option<XdgSurfaceRole>,
 }
 
-#[derive(Clone)]
-pub enum XdgSurfaceRole {
-	XdgToplevel(xdg_toplevel::XdgToplevel),
-}
-
-impl XdgSurfaceRole {
-	pub fn resize_window(&self, size: Size) {
-		match *self {
-			XdgSurfaceRole::XdgToplevel(ref xdg_toplevel) => {
-				xdg_toplevel.configure(size.width as i32, size.height as i32, Vec::new());
-			}
-		}
-	}
-}
-
 impl XdgSurfaceData {
-	pub fn new() -> Self {
+	pub fn new(parent: Resource<WlSurface>) -> Self {
 		Self {
+			parent,
 			pending_state: XdgSurfacePendingState::default(),
 			solid_window_geometry: None,
 			xdg_surface_role: None,
@@ -60,6 +40,31 @@ impl XdgSurfaceData {
 		self.xdg_surface_role
 			.as_mut()
 			.map(|xdg_surface_role| xdg_surface_role.resize_window(size));
+	}
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct XdgSurfacePendingState {
+	solid_window_geometry: Option<Rect>,
+}
+
+#[derive(Clone)]
+pub enum XdgSurfaceRole {
+	XdgToplevel(Resource<XdgToplevel>),
+}
+
+impl XdgSurfaceRole {
+	pub fn resize_window(&self, size: Size) {
+		match *self {
+			XdgSurfaceRole::XdgToplevel(ref xdg_toplevel) => {
+				let configure_event = xdg_toplevel::ConfigureEvent {
+					width: size.width as i32,
+					height: size.height as i32,
+					states: Vec::new(), // TODO: investigate,
+				};
+				xdg_toplevel.send_event(XdgToplevelEvent::Configure(configure_event));
+			}
+		}
 	}
 }
 
@@ -87,156 +92,101 @@ impl XdgToplevelData {
 
 impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub(crate) fn setup_xdg_wm_base_global(&mut self) {
-		let inner = Arc::clone(&self.inner);
-		let xdg_wm_base_filter = Filter::new(
-			move |(main, _num): (Main<xdg_wm_base::XdgWmBase>, u32), _filter, _dispatch_data| {
-				let inner = Arc::clone(&inner);
-				main.quick_assign(move |_main, request: xdg_wm_base::Request, _| {
-					let inner = Arc::clone(&inner);
-					match request {
-						xdg_wm_base::Request::Destroy => {}
-						xdg_wm_base::Request::CreatePositioner { id } => {
-							id.quick_assign(
-								|_main: Main<xdg_positioner::XdgPositioner>, request: xdg_positioner::Request, _| {
-									match request {
-										xdg_positioner::Request::Destroy => {}
-										xdg_positioner::Request::SetSize { .. } => {}
-										xdg_positioner::Request::SetAnchorRect { .. } => {}
-										xdg_positioner::Request::SetAnchor { .. } => {}
-										xdg_positioner::Request::SetGravity { .. } => {}
-										xdg_positioner::Request::SetConstraintAdjustment { .. } => {}
-										xdg_positioner::Request::SetOffset { .. } => {}
-										_ => {
-											log::warn!("Got unknown request for xdg_positioner");
-										}
-									}
-								},
-							);
-						}
-						xdg_wm_base::Request::GetXdgSurface {
-							id: xdg_surface_id,
-							surface,
-						} => {
-							log::trace!("Creating xdg_surface");
-							let xdg_surface = (*xdg_surface_id).clone();
-							let xdg_surface_data = Arc::new(Mutex::new(XdgSurfaceData::new()));
-							let xdg_surface_data_clone = Arc::clone(&xdg_surface_data);
-							xdg_surface
-								.as_ref()
-								.user_data()
-								.set_threadsafe(move || xdg_surface_data_clone);
-							xdg_surface_id.quick_assign(
-								move |_main: Main<xdg_surface::XdgSurface>, request: xdg_surface::Request, _| {
-									let inner = Arc::clone(&inner);
-									match request {
-										xdg_surface::Request::GetToplevel { id: xdg_toplevel_id } => {
-											// Set the xdg toplevel data
-											let xdg_toplevel = (*xdg_toplevel_id).clone();
-											let xdg_toplevel_data = Arc::new(Mutex::new(XdgToplevelData::new()));
-											let xdg_toplevel_data_clone = Arc::clone(&xdg_toplevel_data);
-											xdg_toplevel
-												.as_ref()
-												.user_data()
-												.set_threadsafe(move || xdg_toplevel_data_clone);
+		self.server.register_global(|new: NewResource<XdgWmBase>| {
+			new.register_fn((), |state, this, request| {
+				let state = state.get_mut::<CompositorState<I, G>>();
+				state.handle_xdg_wm_base_request(this, request);
+			});
+		});
+	}
+}
 
-											// Now that the surface has been assigned as a toplevel we assign the role to the wl_surface and the xdg_surface
-											let surface_data = surface.get_synced::<SurfaceData<G>>();
-											let mut surface_data_lock = surface_data.lock().unwrap();
-											surface_data_lock.role = Some(Role::XdgSurface(xdg_surface.clone()));
-											drop(surface_data_lock);
-											let mut xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
-											xdg_surface_data_lock.xdg_surface_role =
-												Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
-											drop(xdg_surface_data_lock);
+impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I, G> {
+	pub fn handle_xdg_wm_base_request(&mut self, this: Resource<XdgWmBase>, request: XdgWmBaseRequest) {
+		match request {
+			XdgWmBaseRequest::Destroy => log::warn!("xdg_wm_base::destroy not implemented"),
+			XdgWmBaseRequest::CreatePositioner(_request) => log::warn!("xdg_wm_base::create_positioner not implemented"),
+			XdgWmBaseRequest::GetXdgSurface(request) => self.handle_xdg_wm_base_get_xdg_surface(this, request),
+			XdgWmBaseRequest::Pong(_request) => log::warn!("xdg_wm_base::pong not implemented"),
+		}
+	}
 
-											let mut inner_lock = inner.lock().unwrap();
-											inner_lock.window_manager.manager_impl.add_surface(surface.clone());
+	pub fn handle_xdg_wm_base_get_xdg_surface(&mut self, _this: Resource<XdgWmBase>, request: xdg_wm_base::GetXdgSurfaceRequest) {
+		let xdg_surface_data = XdgSurfaceData::new(request.surface);
+		request.id.register_fn(xdg_surface_data, |state, this, request| {
+			let state = state.get_mut::<Self>();
+			state.handle_xdg_surface_request(this, request);
+		});
+	}
 
-											// Send output enter events for every output viewport this surface intersects
-											// TODO: handle surface moves and possibly output viewport changes
-											let surface_data = surface.get_synced::<SurfaceData<G>>();
-											let surface_data_lock = surface_data.lock().unwrap();
-											let client_info = inner_lock
-												.client_manager
-												.get_client_info(xdg_toplevel.as_ref().client().unwrap());
-											let client_info_lock = client_info.lock().unwrap();
-											for output in &client_info_lock.outputs {
-												let output_data = output.get::<Output<G>>();
-												if let Some(surface_geometry) =
-													surface_data_lock.try_get_surface_geometry()
-												{
-													if surface_geometry.intersects(output_data.viewport) {
-														surface.enter(output);
-													}
-												}
-											}
+	pub fn handle_xdg_surface_request(&mut self, this: Resource<XdgSurface>, request: XdgSurfaceRequest) {
+		match request {
+			XdgSurfaceRequest::Destroy => log::warn!("xdg_surface::destroy not implemented"),
+			XdgSurfaceRequest::GetToplevel(request) => self.handle_xdg_surface_get_toplevel(this, request),
+			XdgSurfaceRequest::GetPopup(_request) => log::warn!("xdg_surface::get_popup not implemented"),
+			XdgSurfaceRequest::SetWindowGeometry(request) => self.handle_xdg_surface_set_window_geometry(this, request),
+			XdgSurfaceRequest::AckConfigure(_request) => log::warn!("xdg_surface::ack_configure not implemented"),
+		}
+	}
 
-											xdg_toplevel_id.quick_assign(
-												move |_main, request: xdg_toplevel::Request, _| {
-													let toplevel_data = Arc::clone(&xdg_toplevel_data);
-													match request {
-														xdg_toplevel::Request::SetParent { .. } => {}
-														xdg_toplevel::Request::SetTitle { title } => {
-															let mut toplevel_data_lock = toplevel_data.lock().unwrap();
-															toplevel_data_lock.title = Some(title);
-														}
-														xdg_toplevel::Request::SetAppId { .. } => {}
-														xdg_toplevel::Request::ShowWindowMenu { .. } => {}
-														xdg_toplevel::Request::Move {
-															seat: _seat,
-															serial: _serial,
-														} => {}
-														xdg_toplevel::Request::Resize {
-															seat: _seat,
-															serial: _serail,
-															edges: _edges,
-														} => {}
-														xdg_toplevel::Request::SetMaxSize { .. } => {}
-														xdg_toplevel::Request::SetMinSize { .. } => {}
-														xdg_toplevel::Request::SetMaximized => {}
-														xdg_toplevel::Request::UnsetMaximized => {}
-														xdg_toplevel::Request::SetFullscreen { .. } => {}
-														xdg_toplevel::Request::UnsetFullscreen => {}
-														xdg_toplevel::Request::SetMinimized => {}
-														_ => {
-															log::warn!("Got unknown request for xdg_toplevel");
-														}
-													}
-												},
-											);
-										}
-										xdg_surface::Request::GetPopup {
-											id,
-											parent: _parent,
-											positioner: _positioner,
-										} => id.quick_assign(
-											move |_main, request: xdg_popup::Request, _| match request {
-												xdg_popup::Request::Destroy => {}
-												xdg_popup::Request::Grab { .. } => {}
-												xdg_popup::Request::Reposition { .. } => {}
-												_ => log::warn!("Got unknown request for xdg_popup"),
-											},
-										),
-										xdg_surface::Request::SetWindowGeometry { x, y, width, height } => {
-											let solid_window_geometry = Rect::new(x, y, width as u32, height as u32);
-											let mut xdg_surface_data_lock = xdg_surface_data.lock().unwrap();
-											xdg_surface_data_lock.solid_window_geometry = Some(solid_window_geometry);
-										}
-										xdg_surface::Request::AckConfigure { .. } => {}
-										_ => log::warn!("Got unknown request for xdg_surface"),
-									}
-								},
-							);
-						}
-						xdg_wm_base::Request::Pong { .. } => {}
-						_ => {
-							log::warn!("Got unknown request for xdg_wm_base");
-						}
-					}
-				});
-			},
-		);
-		self.display
-			.create_global::<xdg_wm_base::XdgWmBase, _>(2, xdg_wm_base_filter);
+	pub fn handle_xdg_surface_get_toplevel(&mut self, this: Resource<XdgSurface>, request: xdg_surface::GetToplevelRequest) {
+		let xdg_toplevel_data = XdgToplevelData::new();
+		let xdg_toplevel = request.id.register_fn(RefCell::new(xdg_toplevel_data), |state, this, request| {
+			let state = state.get_mut::<Self>();
+			state.handle_xdg_toplevel_request(this, request);
+		});
+
+		let xdg_surface_data = this.get_data::<RefCell<XdgSurfaceData>>().unwrap();
+		xdg_surface_data.borrow_mut().xdg_surface_role = Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
+		
+		// Send a wl_surface::enter event for every output this surface intersects with. TODO (should this be in the surface module?)
+		let surface_data = xdg_surface_data.borrow();
+		let surface_data = surface_data.parent.get_data::<SurfaceData<G>>().unwrap();
+
+		let client = this.client();
+		let client = client.get().unwrap();
+		let client_state = client.state::<RefCell<ClientState>>();
+	
+		for output in &client_state.borrow().outputs {
+			let output_data = output.get_data::<Output<G>>().unwrap();
+			if let Some(surface_geometry) = surface_data.try_get_surface_geometry() {
+				if surface_geometry.intersects(output_data.viewport) {
+					xdg_surface_data.borrow().parent.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
+						output: output.clone(),
+					}));
+				}
+			}
+		}
+	}
+
+	pub fn handle_xdg_surface_set_window_geometry(&mut self, this: Resource<XdgSurface>, request: xdg_surface::SetWindowGeometryRequest) {
+		let solid_window_geometry = Rect::new(request.x, request.y, request.width as u32, request.height as u32);
+		
+		let xdg_surface_data = this.get_data::<RefCell<XdgSurfaceData>>().unwrap();
+		xdg_surface_data.borrow_mut().solid_window_geometry = Some(solid_window_geometry);
+	}
+
+	pub fn handle_xdg_toplevel_request(&mut self, this: Resource<XdgToplevel>, request: XdgToplevelRequest) {
+		match request {
+			XdgToplevelRequest::Destroy => log::warn!("xdg_toplevel::destroy not implemented"),
+			XdgToplevelRequest::SetParent(_request) => log::warn!("xdg_toplevel::set_parent not implemented"),
+			XdgToplevelRequest::SetTitle(request) => self.handle_xdg_toplevel_set_title(this, request),
+			XdgToplevelRequest::SetAppId(_request) => log::warn!("xdg_toplevel::set_app_id not implemented"),
+			XdgToplevelRequest::ShowWindowMenu(_request) => log::warn!("xdg_toplevel::show_window_menu not implemented"),
+			XdgToplevelRequest::Move(_request) => log::warn!("xdg_toplevel::move not implemented"),
+			XdgToplevelRequest::Resize(_request) => log::warn!("xdg_toplevel::resize not implemented"),
+			XdgToplevelRequest::SetMaxSize(_request) => log::warn!("xdg_toplevel::set_max_size not implemented"),
+			XdgToplevelRequest::SetMinSize(_request) => log::warn!("xdg_toplevel::set_min_size not implemented"),
+			XdgToplevelRequest::SetMaximized => log::warn!("xdg_toplevel::set_maximize not implemented"),
+			XdgToplevelRequest::UnsetMaximized => log::warn!("xdg_toplevel::unset_maximized not implemented"),
+			XdgToplevelRequest::SetFullscreen(_request) => log::warn!("xdg_toplevel::set_fullscreen not implemented"),
+			XdgToplevelRequest::UnsetFullscreen => log::warn!("xdg_toplevel::unset_fullscreen not implemented"),
+			XdgToplevelRequest::SetMinimized => log::warn!("xdg_toplevel::set_minimized not implemented"),
+		}
+	}
+
+	pub fn handle_xdg_toplevel_set_title(&mut self, this: Resource<XdgToplevel>, request: xdg_toplevel::SetTitleRequest) {
+		let title = String::from_utf8_lossy(&request.title).into_owned();
+		this.get_data::<RefCell<XdgToplevelData>>().unwrap().borrow_mut().title = Some(title);
 	}
 }

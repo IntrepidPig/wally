@@ -61,9 +61,8 @@ impl LibinputInputBackend {
 		let (event_sender, event_receiver) = channel::channel();
 		let event_source = event_loop_handle
 			.insert_source(libinput_evented, move |_event, compositor| {
-				let mut input_backend_state = compositor.input_backend_state.lock().unwrap();
-				input_backend_state
-					.input_backend
+				compositor.state_mut().input_state
+					.backend
 					.update()
 					.map_err(|e| log::error!("Failed to update input backend: {}", e))
 					.unwrap();

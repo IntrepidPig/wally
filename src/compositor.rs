@@ -1,85 +1,61 @@
 use std::{
 	fmt,
 	fs::{self},
-	io::{self},
 	marker::PhantomData,
 	sync::atomic::{AtomicBool, AtomicU32, Ordering},
 	time::{Duration, Instant},
 };
 
 use calloop::{
-	mio,
 	signals::{Signal, Signals},
 	EventLoop, LoopHandle, Source,
 };
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
-use wayland_server::{protocol::*, Client, Display, Filter, Global, Interface, Main, Resource};
 
 use crate::{
-	backend::{BackendEvent, GraphicsBackend, InputBackend, ShmBuffer},
+	backend::{BackendEvent, GraphicsBackend, InputBackend},
 	behavior::WindowManager,
 	compositor::prelude::*,
 	compositor::surface::SurfaceData,
 	input::KeyboardState,
 	renderer::{Output, Renderer},
 };
+use wl_server::server::{ServerCreateError, ServerError};
 
 pub mod client;
+pub mod compositor;
+pub mod data_device;
+pub mod shm;
+pub mod surface;
 pub mod output;
 pub mod role;
 pub mod seat;
 pub mod shell;
-pub mod shm;
-pub mod surface;
 pub mod xdg;
 
 pub mod prelude {
 	pub use std::{
 		marker::PhantomData,
 		sync::{Arc, Mutex},
+		cell::{RefCell},
 	};
 
-	pub use wayland_server::{protocol::*, Client, Display, Filter, Main};
+	//pub use wayland_server::{protocol::*, Client, Display, Filter, Main};
+	pub use wl_server::{
+		protocol::*,
+		Client, Server, Resource, NewResource, Owner, Handle, Global,
+	};
 
 	pub use festus::geometry::*;
 
 	pub use crate::{
 		backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress, PointerButton, PointerMotion, PressState},
-		compositor::{client::ClientInfo, role::Role, surface::SurfaceData, PointerState, Synced, UserDataAccess},
+		compositor::{CompositorState, client::ClientState, role::Role, surface::SurfaceData, PointerState, Synced},
 	};
 }
 
 pub type Synced<T> = Arc<Mutex<T>>;
-
-/// Helper extension trait to clean up the access of UserData of a known type
-pub trait UserDataAccess {
-	fn get<T: 'static>(&self) -> &T;
-	fn try_get<T: 'static>(&self) -> Option<&T>;
-	fn try_get_synced<T: 'static>(&self) -> Option<Synced<T>>;
-	fn get_synced<T: 'static>(&self) -> Synced<T>;
-}
-
-impl<I> UserDataAccess for I
-where
-	I: Interface + AsRef<Resource<I>> + From<Resource<I>>,
-{
-	fn get<T: 'static>(&self) -> &T {
-		self.try_get().unwrap()
-	}
-
-	fn try_get<T: 'static>(&self) -> Option<&T> {
-		self.as_ref().user_data().get::<T>()
-	}
-
-	fn try_get_synced<T: 'static>(&self) -> Option<Synced<T>> {
-		self.try_get::<Synced<T>>().map(Synced::clone)
-	}
-
-	fn get_synced<T: 'static>(&self) -> Synced<T> {
-		self.try_get_synced().unwrap()
-	}
-}
 
 pub(crate) static INPUT_SERIAL: AtomicU32 = AtomicU32::new(1);
 pub(crate) static PROFILE_OUTPUT: AtomicBool = AtomicBool::new(false);
@@ -98,33 +74,48 @@ pub fn debug_output() -> bool {
 }
 
 pub struct Compositor<I: InputBackend, G: GraphicsBackend> {
-	display: Display,
-	inner: Arc<Mutex<CompositorInner<I, G>>>,
-	pub(crate) input_backend_state: Arc<Mutex<InputBackendState<I>>>,
-	pub(crate) graphics_backend_state: Arc<Mutex<GraphicsBackendState<G>>>,
+	pub(crate) server: Server,
 	_signal_event_source: Source<Signals>,
 	_idle_event_source: calloop::Idle,
-	_display_event_source: calloop::Source<calloop::generic::Generic<calloop::generic::EventedRawFd>>,
+	//_display_event_source: calloop::Source<calloop::generic::Generic<calloop::generic::EventedRawFd>>,
 	_input_event_source: calloop::Source<calloop::channel::Channel<BackendEvent>>,
+	_phantom: PhantomData<(I, G)>,
+}
+
+pub struct CompositorState<I: InputBackend, G: GraphicsBackend> {
+	pub input_state: InputBackendState<I>,
+	pub graphics_state: GraphicsBackendState<G>,
+	pub inner: CompositorInner<I, G>,
 }
 
 pub struct InputBackendState<I: InputBackend> {
-	pub input_backend: I,
+	pub backend: I,
+}
+
+impl<I: InputBackend> InputBackendState<I> {
+	pub fn update(&mut self) -> Result<(), I::Error> {
+		self.backend.update()
+	}
 }
 
 pub struct GraphicsBackendState<G: GraphicsBackend> {
 	pub renderer: Renderer<G>,
 }
 
+impl<G: GraphicsBackend> GraphicsBackendState<G> {
+	pub fn update(&mut self) -> Result<(), G::Error> {
+		self.renderer.update()
+	}
+}
+
 pub struct CompositorInner<I: InputBackend, G: GraphicsBackend> {
 	running: bool,
-	pub client_manager: ClientManager,
 	pub window_manager: WindowManager<G>,
-	pub pointer: Synced<PointerState>,
-	pub pointer_focus: Option<wl_surface::WlSurface>,
-	pub keyboard_state: Synced<KeyboardState>,
-	pub keyboard_focus: Option<wl_surface::WlSurface>,
-	pub output_globals: Vec<(Global<wl_output::WlOutput>, Output<G>)>,
+	pub pointer: PointerState,
+	pub pointer_focus: Option<Resource<WlSurface>>,
+	pub keyboard_state: KeyboardState,
+	pub keyboard_focus: Option<Resource<WlSurface>>,
+	pub output_globals: Vec<(Handle<Global>, Output<G>)>,
 	phantom: PhantomData<I>,
 }
 
@@ -132,6 +123,16 @@ pub struct PointerState {
 	pub pos: (f64, f64),
 	pub sensitivity: f64,
 	pub custom_cursor: Option<CustomCursor>,
+}
+
+impl PointerState {
+	pub fn new() -> Self {
+		Self {
+			pos: (0.0, 0.0),
+			sensitivity: 1.0,
+			custom_cursor: None
+		}
+	}
 }
 
 impl fmt::Debug for PointerState {
@@ -158,51 +159,6 @@ impl fmt::Debug for CustomCursor {
 	}
 }
 
-impl<I: InputBackend, G: GraphicsBackend> CompositorInner<I, G> {
-	fn trim_dead_clients(&mut self) {
-		/* self.surface_tree.surfaces.retain(|surface| {
-			log::debug!("Checking surface");
-			if !surface.as_ref().is_alive() {
-				log::debug!("Destroying surface");
-				false
-			} else {
-				true
-			}
-		}) */
-	}
-}
-
-pub struct ClientManager {
-	pub clients: Vec<Arc<Mutex<ClientInfo>>>,
-}
-
-impl ClientManager {
-	pub fn new() -> Self {
-		Self { clients: Vec::new() }
-	}
-
-	pub fn get_client_info(&mut self, client: Client) -> Synced<ClientInfo> {
-		// This is written weirdly to bypass borrow checker issues
-		if self.clients.iter().any(|r| r.lock().unwrap().client.equals(&client)) {
-			Arc::clone(
-				&self
-					.clients
-					.iter()
-					.find(|r| r.lock().unwrap().client.equals(&client))
-					.unwrap(),
-			)
-		} else {
-			self.clients.push(Arc::new(Mutex::new(ClientInfo {
-				client,
-				keyboards: Vec::new(),
-				pointers: Vec::new(),
-				outputs: Vec::new(),
-			})));
-			Arc::clone(self.clients.last().unwrap())
-		}
-	}
-}
-
 pub struct ClientResources {
 	pub client: Client,
 	pub keyboard: Option<wl_keyboard::WlKeyboard>,
@@ -215,44 +171,18 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 		graphics_backend: G,
 		event_loop_handle: LoopHandle<Compositor<I, G>>,
 	) -> Result<Self, CompositorError<G>> {
-		let mut display = Display::new();
-		//let f = fs::File::create("/run/user/1000/wayland-0").unwrap();
-		display
-			.add_socket::<&str>(None)
-			.map_err(|e| CompositorError::SocketError(e))?;
-
 		let signals = Signals::new(&[Signal::SIGINT]).expect("Failed to setup signal handler");
 		let signal_event_source = event_loop_handle
 			.insert_source(
 				signals,
 				|_event: calloop::signals::Event, compositor: &mut Compositor<I, G>| {
 					log::info!("Received sigint, exiting");
-					let mut inner = compositor.inner.lock().unwrap();
-					inner.running = false;
+					compositor.state_mut().inner.running = false;
 				},
 			)
 			.expect("Failed to insert signal handler in event loop");
 
 		let idle_event_source = event_loop_handle.insert_idle(|_wally: &mut Compositor<I, G>| {});
-
-		let mut display_events = calloop::generic::Generic::from_raw_fd(display.get_poll_fd());
-		display_events.set_interest(mio::Ready::readable());
-		display_events.set_pollopts(mio::PollOpt::edge());
-		let display_event_source = event_loop_handle
-			.insert_source(
-				display_events,
-				|_event: calloop::generic::Event<calloop::generic::EventedRawFd>, compositor: &mut Compositor<I, G>| {
-					compositor
-						.display
-						.dispatch(Duration::from_millis(0), &mut ())
-						.map_err(|e| {
-							log::error!("Failed to dispatch display events: {}", e);
-						})
-						.unwrap();
-					compositor.display.flush_clients(&mut ());
-				},
-			)
-			.expect("Failed to insert epoll fd in the event loop");
 
 		let input_events = input_backend.get_event_source();
 		let input_event_source = event_loop_handle
@@ -266,22 +196,14 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			)
 			.expect("Failed to insert input event source");
 
-		let client_manager = ClientManager::new();
+		let pointer_state = PointerState::new();
+		let keyboard_state = KeyboardState::new();
 
-		let pointer_state = Arc::new(Mutex::new(PointerState {
-			pos: (0.0, 0.0),
-			sensitivity: 1.0,
-			custom_cursor: None,
-		}));
-		let keyboard_state = Arc::new(Mutex::new(KeyboardState::new()));
+		let window_manager = WindowManager::new(Box::new(crate::behavior::DumbWindowManagerBehavior::new()));
 
 		let inner = CompositorInner {
 			running: true,
-			client_manager,
-			window_manager: WindowManager::new(Box::new(crate::behavior::DumbWindowManagerBehavior::new(Arc::clone(
-				&pointer_state,
-			)))),
-			//surface_tree: SurfaceTree::new(Arc::clone(&pointer_state)),
+			window_manager,
 			pointer: pointer_state,
 			pointer_focus: None,
 			keyboard_state,
@@ -290,127 +212,105 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 			phantom: PhantomData,
 		};
 
-		let input_backend_state = Arc::new(Mutex::new(InputBackendState { input_backend }));
-
+		let input_state = InputBackendState { backend: input_backend };
 		let renderer = Renderer::init(graphics_backend).unwrap(); // TODO no unwrap
+		let graphics_state = GraphicsBackendState { renderer };
 
-		let graphics_backend_state = Arc::new(Mutex::new(GraphicsBackendState { renderer }));
+		let state = CompositorState {
+			inner,
+			input_state,
+			graphics_state,
+		};
+
+		let server = Server::new(state)?;
 
 		Ok(Self {
-			display,
-			inner: Arc::new(Mutex::new(inner)),
-			input_backend_state,
-			graphics_backend_state,
+			server,
 			_signal_event_source: signal_event_source,
 			_idle_event_source: idle_event_source,
-			_display_event_source: display_event_source,
+			//_display_event_source: display_event_source,
 			_input_event_source: input_event_source,
+			_phantom: PhantomData,
 		})
 	}
 
+	pub fn state(&self) -> &CompositorState<I, G> {
+		self.server.state.get::<CompositorState<I, G>>()
+	}
+
+	pub fn state_mut(&mut self) -> &mut CompositorState<I, G> {
+		self.server.state.get_mut::<CompositorState<I, G>>()
+	}
+
 	pub fn print_debug_info(&self) {
-		let inner = self.inner.lock().unwrap();
-		println!("Surfaces:");
-		for (i, surface) in inner.window_manager.manager_impl.surfaces_ascending().enumerate() {
-			println!("\tSurface@{} {}", surface.as_ref().id(), i);
-			let surface_data = surface.get_synced::<SurfaceData<G>>();
-			let surface_data_lock = surface_data.lock().unwrap();
-			if let Some(role) = surface_data_lock.role.as_ref() {
-				println!("\t\tRole: {:?}", role);
-			} else {
-				println!("\t\tRole: None");
-			}
-			println!("\t\tAlive: {}", surface.as_ref().is_alive());
-			println!(
-				"\t\tClient: {}",
-				surface
-					.as_ref()
-					.client()
-					.map(|client| if client.alive() { "Alive client" } else { "Dead client" })
-					.unwrap_or("No client")
-			);
-		}
+		log::debug!("Debug info goes here");
 	}
 
 	pub fn start(&mut self, event_loop: &mut EventLoop<Compositor<I, G>>) {
-		while self.inner.lock().unwrap().running {
-			let start = Instant::now();
+		while self.state().inner.running {
+			let main_start = Instant::now();
 			{
-				let mut inner = self.inner.lock().unwrap();
-				let input_update_start = Instant::now();
-				let mut input_backend_state = self.input_backend_state.lock().unwrap();
-				input_backend_state
-					.input_backend
-					.update()
+				let start = Instant::now();
+
+				let state = self.state_mut();
+				state.input_state.update()
 					.map_err(|_e| log::error!("Error updating the input backend"))
 					.unwrap();
 				if profile_output() {
-					log::debug!(
-						"Updated input backend in {} ms",
-						input_update_start.elapsed().as_secs_f64() * 1000.0
-					);
+					log::debug!("Input backend update: {} ms", start.elapsed().as_secs_f64() * 1000.0);
 				}
 
-				let render_update_start = Instant::now();
-				let mut graphics_backend_state = self.graphics_backend_state.lock().unwrap();
-				graphics_backend_state
-					.renderer
-					.update()
-					.map_err(|_e| log::error!("Error updating the render backend"))
+				let start = Instant::now();
+				state.graphics_state.update()
+					.map_err(|e| log::error!("Error updating the render backend: {}", e))
 					.unwrap();
 				if profile_output() {
-					log::debug!(
-						"Updated render backend in {} ms",
-						render_update_start.elapsed().as_secs_f64() * 1000.0
-					);
+					log::debug!("Graphics backend update: {} ms", start.elapsed().as_secs_f64() * 1000.0);
 				}
-				let inner = &mut *inner;
-				let render_tree_start = Instant::now();
-				graphics_backend_state
+				
+				let start = Instant::now();
+				let inner = &state.inner;
+				state.graphics_state
 					.renderer
 					.render_scene(|mut scene_render_state| {
 						for surface in inner.window_manager.manager_impl.surfaces_ascending() {
-							scene_render_state.draw_surface(surface.clone())?;
+							scene_render_state.draw_surface(surface)?;
 						}
-						let pointer_state = inner.pointer.lock().unwrap();
+						let pointer_state = &inner.pointer;
 						let pointer_pos =
 							Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 						scene_render_state.draw_cursor(pointer_pos)?;
 						Ok(())
 					})
 					.unwrap();
-				graphics_backend_state.renderer.present().unwrap();
+				state.graphics_state.renderer.present().unwrap();
 				if profile_output() {
-					log::debug!(
-						"Rendered surface tree in {} ms",
-						render_tree_start.elapsed().as_secs_f64() * 1000.0
-					);
+					log::debug!("Render time: {} ms", start.elapsed().as_secs_f64() * 1000.0);
 				}
 			}
 			// TODO change timeout to something that syncs with rendering somehow. The timeout should be the time until
 			// the next frame should start rendering.
-			let dispatch_start = Instant::now();
+			let start = Instant::now();
 			match event_loop.dispatch(Some(Duration::from_millis(0)), self) {
 				Ok(_) => {}
 				Err(e) => {
 					log::error!("An error occurred in the event loop: {}", e);
 				}
 			}
+			match self.server.dispatch(|_handle| ClientState::new()) {
+				Ok(()) => {},
+				Err(e) => {
+					log::error!("Error dispatching requests: {}", e);
+				},
+			};
 			if profile_output() {
-				log::debug!(
-					"Dispatched events in {} ms",
-					dispatch_start.elapsed().as_secs_f64() * 1000.0
-				);
+				log::debug!("Event dispatch time: {} ms", start.elapsed().as_secs_f64() * 1000.0);
 			}
-			let flush_start = Instant::now();
-			self.display.flush_clients(&mut ());
-			if profile_output() {
-				log::debug!("Flushed clients in {} ms", flush_start.elapsed().as_secs_f64() * 1000.0);
-			}
+			
 			if debug_output() {
 				self.print_debug_info();
 			}
-			let end = start.elapsed();
+			let end = main_start.elapsed();
 			if profile_output() {
 				log::debug!("Ran frame in {} ms", end.as_secs_f64() * 1000.0);
 			}
@@ -418,202 +318,223 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	}
 
 	pub fn handle_input_event(&mut self, event: BackendEvent) {
-		let mut inner = self.inner.lock().unwrap();
+		let state = self.state_mut();
 		match event {
 			BackendEvent::StopRequested => {
-				inner.running = false;
+				state.inner.running = false;
 			}
 			BackendEvent::KeyPress(key_press) => {
-				let inner = &mut *inner;
-
-				// Update the internal xkb keyboard state tracker.
-				let mut keyboard_state_lock = inner.keyboard_state.lock().unwrap();
-				let state_change = keyboard_state_lock.update_key(key_press.clone());
+				let state_change = state.inner.keyboard_state.update_key(key_press.clone());
 
 				// Send the key event to the surface that currently has keyboard focus, and an updated modifiers event if modifiers changed.
-				if let Some(focused) = inner.keyboard_focus.clone() {
-					let surface_data = focused.get_synced::<SurfaceData<G>>();
-					let surface_data_lock = surface_data.lock().unwrap();
-					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
-					for keyboard in &client_info_lock.keyboards {
+				if let Some(focused) = state.inner.keyboard_focus.clone() {
+					// TODO: check aliveness
+					let client = focused.client();
+					let client = client.get().unwrap();
+					let client_state = client.state::<RefCell<ClientState>>();
+					let client_state = client_state.borrow();
+
+					for keyboard in &client_state.keyboards {
 						if state_change {
-							let mods = keyboard_state_lock.xkb_modifiers_state;
-							keyboard.modifiers(
-								key_press.serial,
-								mods.mods_depressed,
-								mods.mods_latched,
-								mods.mods_locked,
-								mods.group,
-							);
+							let mods = state.inner.keyboard_state.xkb_modifiers_state;
+							let modifiers_event = wl_keyboard::ModifiersEvent {
+								serial: key_press.serial,
+								mods_depressed: mods.mods_depressed,
+								mods_latched: mods.mods_latched,
+								mods_locked: mods.mods_locked,
+								group: mods.group,
+							};
+							keyboard.send_event(WlKeyboardEvent::Modifiers(modifiers_event));
 						}
-						keyboard.key(key_press.serial, key_press.time, key_press.key, key_press.state.into());
+						let key_event = wl_keyboard::KeyEvent {
+							serial: key_press.serial,
+							time: key_press.time,
+							key: key_press.key,
+							state: key_press.state.into(),
+						};
+						keyboard.send_event(WlKeyboardEvent::Key(key_event));
 					}
 				}
 			}
 			BackendEvent::PointerMotion(pointer_motion) => {
-				let mut pointer_state_lock = inner.pointer.lock().unwrap();
-				pointer_state_lock.pos.0 += pointer_motion.dx_unaccelerated * pointer_state_lock.sensitivity;
-				pointer_state_lock.pos.1 += pointer_motion.dy_unaccelerated * pointer_state_lock.sensitivity;
+				let mut pointer_state = &mut state.inner.pointer;
 
-				let pointer_pos = pointer_state_lock.pos;
-				drop(pointer_state_lock);
-				let pointer_pos = Point::new(pointer_pos.0.round() as i32, pointer_pos.1.round() as i32);
+				pointer_state.pos.0 += pointer_motion.dx_unaccelerated * pointer_state.sensitivity;
+				pointer_state.pos.1 += pointer_motion.dy_unaccelerated * pointer_state.sensitivity;
+				let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 
-				if let Some(surface) = inner.window_manager.get_window_under_point(pointer_pos) {
-					let surface_data = surface.get_synced::<SurfaceData<G>>();
-					let surface_data_lock = surface_data.lock().unwrap();
+				if let Some(surface) = state.inner.window_manager.get_window_under_point(pointer_pos) {
+					let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+					let client = surface.client();
+					let client = client.get().unwrap();
+					let client_state = client.state::<RefCell<ClientState>>();
+
 					let surface_relative_coords =
-						if let Some(surface_position) = surface_data_lock.try_get_surface_position() {
-							Point::new(pointer_pos.x - surface_position.x, pointer_pos.y - surface_position.y)
+						if let Some(geometry) = surface_data.borrow().try_get_surface_geometry() {
+							Point::new(pointer_pos.x - geometry.x, pointer_pos.y - geometry.y)
 						} else {
-							log::error!("Surface had no position set!");
+							// This should probably not happen because the window manager just told us the pointer is
+							// over this window, implying it has geometry
 							Point::new(0, 0)
 						};
 
-					if let Some(old_pointer_focus) = inner.pointer_focus.clone() {
-						if *surface.as_ref() == *old_pointer_focus.as_ref() {
+					if let Some(old_pointer_focus) = state.inner.pointer_focus.clone() {
+						let old_surface_client = old_pointer_focus.client();
+						let old_surface_client = old_surface_client.get().unwrap();
+						let old_surface_client_state = old_surface_client.state::<RefCell<ClientState>>();
+
+						if old_pointer_focus.is(&surface) {
 							// The pointer is over the same surface as it was previously, do not send any focus events
 						} else {
 							// The pointer is over a different surface, unfocus the old one and focus the new one
-							let old_surface_data = old_pointer_focus.get_synced::<SurfaceData<G>>();
-							let old_surface_data_lock = old_surface_data.lock().unwrap();
-							let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
-							for pointer in &old_client_info_lock.pointers {
-								pointer.leave(get_input_serial(), &old_pointer_focus);
+							for pointer in &old_surface_client_state.borrow().pointers {
+								pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
+									serial: get_input_serial(),
+									surface: old_pointer_focus.clone(),
+								}));
 							}
-							for keyboard in &old_client_info_lock.keyboards {
-								keyboard.leave(get_input_serial(), &old_pointer_focus);
+							for pointer in &client_state.borrow().pointers {
+								pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
+									serial: get_input_serial(),
+									surface: surface.clone(),
+									surface_x: (surface_relative_coords.x as f64).into(),
+									surface_y: (surface_relative_coords.y as f64).into(),
+								}));
 							}
-							drop(old_client_info_lock);
-							drop(old_surface_data_lock);
-							let surface_client_info_lock = surface_data_lock.client_info.lock().unwrap();
-							for pointer in &surface_client_info_lock.pointers {
-								pointer.enter(
-									get_input_serial(),
-									&surface,
-									surface_relative_coords.x as f64,
-									surface_relative_coords.y as f64,
-								);
-							}
-							for keyboard in &surface_client_info_lock.keyboards {
-								keyboard.enter(
-									get_input_serial(),
-									&surface,
-									Vec::new(), // TODO: currently pressed keys
-								)
-							}
-							inner.pointer_focus = Some(surface.clone());
+							state.inner.pointer_focus = Some(surface.clone())
 						}
 					} else {
 						// The pointer has entered a surface while no other surface is focused, focus this surface
-						let surface_client_info_lock = surface_data_lock.client_info.lock().unwrap();
-						for pointer in &surface_client_info_lock.pointers {
-							pointer.enter(
-								get_input_serial(),
-								&surface,
-								surface_relative_coords.x as f64,
-								surface_relative_coords.y as f64,
-							);
+						for pointer in &client_state.borrow().pointers {
+							pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
+								serial: get_input_serial(),
+								surface: surface.clone(),
+								surface_x: (surface_relative_coords.x as f64).into(),
+								surface_y: (surface_relative_coords.y as f64).into(),
+							}));
 						}
-						for keyboard in &surface_client_info_lock.keyboards {
-							keyboard.enter(
-								get_input_serial(),
-								&surface,
-								Vec::new(), // TODO: currently pressed keys
-							)
-						}
-						inner.pointer_focus = Some(surface.clone());
+						state.inner.pointer_focus = Some(surface.clone());
 					}
 
 					// Send the surface the actual motion event
-					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
-					for pointer in &client_info_lock.pointers {
-						pointer.motion(
-							get_input_serial(),
-							surface_relative_coords.x as f64,
-							surface_relative_coords.y as f64,
-						);
+					for pointer in &client_state.borrow().pointers {
+						pointer.send_event(WlPointerEvent::Motion(wl_pointer::MotionEvent {
+							time: get_input_serial(),
+							surface_x: (surface_relative_coords.x as f64).into(),
+							surface_y: (surface_relative_coords.y as f64).into(),
+						}));
 					}
 				} else {
 					// The pointer is not over any surface, remove pointer focus from the previous focused surface if any
-					if let Some(old_pointer_focus) = inner.pointer_focus.take() {
-						let surface_data = old_pointer_focus.get_synced::<SurfaceData<G>>();
-						let surface_data_lock = surface_data.lock().unwrap();
-						let client_info_lock = surface_data_lock.client_info.lock().unwrap();
-						for pointer in &client_info_lock.pointers {
-							pointer.leave(get_input_serial(), &old_pointer_focus);
-						}
-						for keyboard in &client_info_lock.keyboards {
-							keyboard.leave(get_input_serial(), &old_pointer_focus);
+					if let Some(old_pointer_focus) = state.inner.pointer_focus.take() {
+						let client = old_pointer_focus.client();
+						let client = client.get().unwrap();
+						let client_state = client.state::<RefCell<ClientState>>();
+
+						for pointer in &client_state.borrow().pointers {
+							pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
+								serial: get_input_serial(),
+								surface: old_pointer_focus.clone(),
+							}));
 						}
 					}
 				}
 			}
 			BackendEvent::PointerButton(pointer_button) => {
-				let pointer_state = inner.pointer.lock().unwrap();
-				let pointer_pos = pointer_state.pos;
-				drop(pointer_state);
-				let pointer_pos = Point::new(pointer_pos.0.round() as i32, pointer_pos.1.round() as i32);
+				let pointer_state = &mut state.inner.pointer;
+				let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 
-				if let Some(surface) = inner.window_manager.get_window_under_point(pointer_pos) {
-					let surface_data = surface.get_synced::<SurfaceData<G>>();
-					let surface_data_lock = surface_data.lock().unwrap();
+				if let Some(surface) = state.inner.window_manager.get_window_under_point(pointer_pos) {
+					let client = surface.client();
+					let client = client.get().unwrap();
+					let client_state = client.state::<RefCell<ClientState>>();
 
 					if pointer_button.state == PressState::Press {
-						if let Some(old_keyboard_focus) = inner.keyboard_focus.clone() {
-							if surface.as_ref().equals(old_keyboard_focus.as_ref()) {
+						if let Some(old_keyboard_focus) = state.inner.keyboard_focus.clone() {
+							if old_keyboard_focus.is(&surface) {
 								// No focus change, this is the same surface
 							} else {
 								// Change the keyboard focus
-								let old_surface_data = old_keyboard_focus.get_synced::<SurfaceData<G>>();
-								let old_surface_data_lock = old_surface_data.lock().unwrap();
-								let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
-								for keyboard in &old_client_info_lock.keyboards {
-									keyboard.leave(get_input_serial(), &old_keyboard_focus);
+								let old_surface_client = old_keyboard_focus.client();
+								let old_surface_client = old_surface_client.get().unwrap();
+								let old_surface_client_state = old_surface_client.state::<RefCell<ClientState>>();
+
+								for keyboard in &old_surface_client_state.borrow().keyboards {
+									keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
+										serial: get_input_serial(),
+										surface: old_keyboard_focus.clone(),
+									}));
 								}
-								drop(old_client_info_lock);
-								drop(old_surface_data_lock);
-								let new_client_info_lock = surface_data_lock.client_info.lock().unwrap();
-								for keyboard in &new_client_info_lock.keyboards {
-									keyboard.modifiers(get_input_serial(), 0, 0, 0, 0);
-									keyboard.enter(get_input_serial(), &surface, Vec::new());
+								for keyboard in &client_state.borrow().keyboards {
+									let mods = state.inner.keyboard_state.xkb_modifiers_state;
+									let modifiers_event = wl_keyboard::ModifiersEvent {
+										serial: get_input_serial(),
+										mods_depressed: mods.mods_depressed,
+										mods_latched: mods.mods_latched,
+										mods_locked: mods.mods_locked,
+										group: mods.group,
+									};
+									let enter_event = wl_keyboard::EnterEvent {
+										serial: get_input_serial(),
+										surface: surface.clone(),
+										keys: Vec::new(), // TODO: actual value
+									};
+									keyboard.send_event(WlKeyboardEvent::Modifiers(modifiers_event));
+									keyboard.send_event(WlKeyboardEvent::Enter(enter_event));
 								}
-								inner.keyboard_focus = Some(surface.clone());
+								state.inner.keyboard_focus = Some(surface.clone());
 							}
 						} else {
 							// Focus the keyboard on a window when there was no previously focused window
-							let new_client_info_lock = surface_data_lock.client_info.lock().unwrap();
-							for keyboard in &new_client_info_lock.keyboards {
-								keyboard.modifiers(get_input_serial(), 0, 0, 0, 0);
-								keyboard.enter(get_input_serial(), &surface, Vec::new());
+							for keyboard in &client_state.borrow().keyboards {
+								let mods = state.inner.keyboard_state.xkb_modifiers_state;
+								let modifiers_event = wl_keyboard::ModifiersEvent {
+									serial: get_input_serial(),
+									mods_depressed: mods.mods_depressed,
+									mods_latched: mods.mods_latched,
+									mods_locked: mods.mods_locked,
+									group: mods.group,
+								};
+								let enter_event = wl_keyboard::EnterEvent {
+									serial: get_input_serial(),
+									surface: surface.clone(),
+									keys: Vec::new(), // TODO: actual value
+								};
+								keyboard.send_event(WlKeyboardEvent::Modifiers(modifiers_event));
+								keyboard.send_event(WlKeyboardEvent::Enter(enter_event));
 							}
-							inner.keyboard_focus = Some(surface.clone());
+							state.inner.keyboard_focus = Some(surface.clone());
 						}
 					}
 				} else {
 					// Remove the keyboard focus from the current focus if empty space is clicked
-					if let Some(old_keyboard_focus) = inner.keyboard_focus.take() {
-						let old_surface_data = old_keyboard_focus.get_synced::<SurfaceData<G>>();
-						let old_surface_data_lock = old_surface_data.lock().unwrap();
-						let old_client_info_lock = old_surface_data_lock.client_info.lock().unwrap();
-						for keyboard in &old_client_info_lock.keyboards {
-							keyboard.leave(get_input_serial(), &old_keyboard_focus);
+					if let Some(old_keyboard_focus) = state.inner.keyboard_focus.take() {
+						let old_surface_client = old_keyboard_focus.client();
+						let old_surface_client = old_surface_client.get().unwrap();
+						let old_surface_client_state = old_surface_client.state::<RefCell<ClientState>>();
+
+						for keyboard in &old_surface_client_state.borrow().keyboards {
+							keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
+								serial: get_input_serial(),
+								surface: old_keyboard_focus.clone(),
+							}));
 						}
 					}
 				}
 
 				// Send event to focused window
-				if let Some(focused) = inner.keyboard_focus.clone() {
-					let surface_data = focused.get_synced::<SurfaceData<G>>();
-					let surface_data_lock = surface_data.lock().unwrap();
-					let client_info_lock = surface_data_lock.client_info.lock().unwrap();
-					for pointer in &client_info_lock.pointers {
-						pointer.button(
-							pointer_button.serial,
-							pointer_button.time,
-							pointer_button.button.to_wl(),
-							pointer_button.state.into(),
-						);
+				if let Some(focused) = state.inner.keyboard_focus.clone() {
+					let client = focused.client();
+					let client = client.get().unwrap();
+					let client_state = client.state::<RefCell<ClientState>>();
+
+					for pointer in &client_state.borrow().pointers {
+						pointer.send_event(WlPointerEvent::Button(wl_pointer::ButtonEvent {
+							serial: pointer_button.serial,
+							time: pointer_button.time,
+							button: pointer_button.button.to_wl(),
+							state: pointer_button.state.into(),
+						}));
 					}
 				}
 			}
@@ -627,165 +548,11 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub(crate) fn setup_globals(&mut self) {
 		self.setup_compositor_global();
 		self.setup_shm_global();
-		self.setup_output_global();
+		self.setup_output_globals();
 		self.setup_seat_global();
 		self.setup_data_device_manager_global();
 		self.setup_wl_shell_global();
 		self.setup_xdg_wm_base_global();
-	}
-
-	fn setup_compositor_global(&mut self) {
-		let inner = Arc::clone(&self.inner);
-		let graphics_backend_state = Arc::clone(&self.graphics_backend_state);
-		let compositor_filter = Filter::new(
-			move |(main, _num): (Main<wl_compositor::WlCompositor>, u32), _filter, _dispatch_data| {
-				let inner = Arc::clone(&inner);
-				let graphics_backend_state = Arc::clone(&graphics_backend_state);
-				main.quick_assign(move |_main, request, _dispatch_data| {
-					let inner = Arc::clone(&inner);
-					let graphics_backend_state = Arc::clone(&graphics_backend_state);
-					match request {
-						wl_compositor::Request::CreateRegion { id } => {
-							id.quick_assign(move |_main, request, _| {
-								match request {
-									wl_region::Request::Destroy => {
-										// TODO handle in destructor
-									}
-									wl_region::Request::Add { .. } => {}
-									wl_region::Request::Subtract { .. } => {}
-									_ => log::warn!("Unknown request for wl_region"),
-								}
-							});
-						}
-						wl_compositor::Request::CreateSurface { id } => {
-							log::trace!("Creating surface");
-							let graphics_backend_destructor = Arc::clone(&graphics_backend_state);
-							let inner_destructor = Arc::clone(&inner);
-							let surface = id.clone();
-							let surface_resource = surface.as_ref();
-							let client_info = inner
-								.lock()
-								.unwrap()
-								.client_manager
-								.get_client_info(surface_resource.client().unwrap());
-							let mut graphics_backend_state_lock = graphics_backend_state.lock().unwrap();
-							let surface_renderer_data = graphics_backend_state_lock
-								.renderer
-								.create_surface_renderer_data()
-								.unwrap();
-							let surface_data: Arc<Mutex<SurfaceData<G>>> =
-								Arc::new(Mutex::new(SurfaceData::new(client_info, surface_renderer_data)));
-							let surface_data_clone = Arc::clone(&surface_data);
-							surface_resource
-								.user_data()
-								.set_threadsafe(move || Arc::clone(&surface_data_clone));
-							id.quick_assign(move |_main, request: wl_surface::Request, _| {
-								let inner = Arc::clone(&inner);
-								let surface_data = Arc::clone(&surface_data);
-								match request {
-									wl_surface::Request::Destroy => {
-										// Handled by destructor
-									}
-									wl_surface::Request::Attach { buffer, x, y } => {
-										let mut surface_data_lock = surface_data.lock().unwrap();
-										// Release the previously attached buffer if it hasn't been committed yet
-										if let Some(old_buffer) = surface_data_lock.pending_state.attached_buffer.take()
-										{
-											if let Some(old_buffer) = old_buffer {
-												old_buffer.0.release()
-											}
-										};
-										// Attach the new buffer to the surface
-										if let Some(buffer) = buffer {
-											surface_data_lock.pending_state.attached_buffer =
-												Some(Some((buffer, Point::new(x, y))));
-										} else {
-											// Attaching a null buffer to a surface is equivalent to unmapping it.
-											surface_data_lock.pending_state.attached_buffer = Some(None);
-										}
-									}
-									wl_surface::Request::Damage { .. } => {}
-									wl_surface::Request::Frame { callback } => {
-										let mut surface_data_lock = surface_data.lock().unwrap();
-										if let Some(_old_callback) =
-											surface_data_lock.callback.replace((*callback).clone())
-										{
-											log::warn!("Replacing surface callback with a newly requested one, unclear if this is intended behavior");
-										}
-									}
-									wl_surface::Request::SetOpaqueRegion { .. } => {}
-									wl_surface::Request::SetInputRegion { .. } => {}
-									wl_surface::Request::Commit => {
-										// TODO: relying on the impl of ShmBuffer to ascertain the size of the buffer is probably unsound if the ShmBuffer impl lies.
-										// So that trait should either be unsafe, or Shm should be moved out of the Rendering backend and EasyShm should be made canonical
-										let mut surface_data_lock = surface_data.lock().unwrap();
-										surface_data_lock.commit_pending_state();
-										if let Some(ref committed_buffer) = surface_data_lock.committed_buffer {
-											let buffer_data = committed_buffer.0.get_synced::<G::ShmBuffer>();
-											let buffer_data_lock = buffer_data.lock().unwrap();
-											let new_size =
-												Size::new(buffer_data_lock.width(), buffer_data_lock.height());
-											drop(buffer_data_lock);
-											drop(surface_data_lock);
-											let mut inner_lock = inner.lock().unwrap();
-											inner_lock
-												.window_manager
-												.manager_impl
-												.handle_surface_resize((*surface).clone(), new_size);
-										}
-									}
-									wl_surface::Request::SetBufferTransform { .. } => {}
-									wl_surface::Request::SetBufferScale { .. } => {}
-									wl_surface::Request::DamageBuffer { .. } => {}
-									_ => {
-										log::warn!("Got unknown request for wl_surface");
-									}
-								}
-							});
-							id.assign_destructor(Filter::new(
-								move |surface: wl_surface::WlSurface, _filter, _dispatch_data| {
-									log::trace!("Destroying wl_surface");
-									let mut graphics_backend_state_lock = graphics_backend_destructor.lock().unwrap();
-									let surface_data = surface.get_synced::<SurfaceData<G>>();
-									graphics_backend_state_lock
-										.renderer
-										.destroy_surface_renderer_data(
-											surface_data.lock().unwrap().renderer_data.take().unwrap(),
-										)
-										.map_err(|e| log::error!("Failed to destroy surface: {}", e))
-										.unwrap();
-									let mut inner = inner_destructor.lock().unwrap();
-									inner.trim_dead_clients();
-								},
-							));
-						}
-						_ => {
-							log::warn!("Got unknown request for wl_compositor");
-						}
-					}
-				});
-			},
-		);
-		self.display
-			.create_global::<wl_compositor::WlCompositor, _>(4, compositor_filter);
-	}
-
-	fn setup_data_device_manager_global(&mut self) {
-		let data_device_manager_filter = Filter::new(
-			|(main, _num): (Main<wl_data_device_manager::WlDataDeviceManager>, u32), _filter, _dispatch_data| {
-				main.quick_assign(
-					|_main, request: wl_data_device_manager::Request, _dispatch_data| match request {
-						wl_data_device_manager::Request::CreateDataSource { id: _ } => {}
-						wl_data_device_manager::Request::GetDataDevice { id: _, seat: _ } => {}
-						_ => {
-							log::warn!("Got unknown request for wl_data_device_manager");
-						}
-					},
-				)
-			},
-		);
-		self.display
-			.create_global::<wl_data_device_manager::WlDataDeviceManager, _>(3, data_device_manager_filter);
 	}
 }
 
@@ -798,8 +565,10 @@ impl<I: InputBackend, G: GraphicsBackend> Drop for Compositor<I, G> {
 
 #[derive(Debug, Error)]
 pub enum CompositorError<G: GraphicsBackend + 'static> {
-	#[error("There was an error creating a wayland socket")]
-	SocketError(#[source] io::Error),
+	#[error("There was an error with the server")]
+	ServerError(#[from] ServerError),
+	#[error("There was an error creating the server")]
+	CreateServerError(#[from] ServerCreateError),
 	#[error("Failed to create a render target")]
 	RenderTargetError(#[source] G::Error),
 }

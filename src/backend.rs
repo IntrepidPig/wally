@@ -3,8 +3,11 @@ pub use std::os::unix::io::{AsRawFd, RawFd};
 
 use std::{error::Error as StdError, fmt};
 
+use wl_server::{
+	protocol::*,
+};
+
 use calloop::channel::Channel;
-use wayland_server::protocol::*;
 // TODO remove this so Festus becomes an optional dependency
 use festus::geometry::*;
 
@@ -199,7 +202,6 @@ impl From<wl_keyboard::KeyState> for PressState {
 		match t {
 			wl_keyboard::KeyState::Pressed => Self::Press,
 			wl_keyboard::KeyState::Released => Self::Release,
-			_ => unreachable!("no"),
 		}
 	}
 }
@@ -218,7 +220,6 @@ impl From<wl_pointer::ButtonState> for PressState {
 		match t {
 			wl_pointer::ButtonState::Pressed => Self::Press,
 			wl_pointer::ButtonState::Released => Self::Release,
-			_ => unreachable!(),
 		}
 	}
 }
