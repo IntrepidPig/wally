@@ -10,10 +10,16 @@ const SUPPORTED_FORMATS: &[wl_shm::Format] = &[wl_shm::Format::Argb8888, wl_shm:
 impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub(crate) fn setup_shm_global(&mut self) {
 		self.server.register_global(|new: NewResource<WlShm>| {
-			let shm = new.register_fn((), |state, this, request| {
-				let state = state.get_mut::<CompositorState<I, G>>();
-				state.handle_shm_request(this, request);
-			});
+			let shm = new.register_fn(
+				(),
+				|state, this, request| {
+					let state = state.get_mut::<CompositorState<I, G>>();
+					state.handle_shm_request(this, request);
+				},
+				|_state, _this| {
+					log::warn!("wl_shm destructor not implemented");
+				},
+			);
 			for &format in SUPPORTED_FORMATS {
 				shm.send_event(WlShmEvent::Format(wl_shm::FormatEvent {
 					format,
@@ -37,10 +43,16 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			.create_shm_pool(request.fd, request.size as usize)
 			.expect("Failed to create shm pool");
 		
-		request.id.register_fn(ShmPoolData::<G>::new(RefCell::new(shm_pool)), |state, this, request| {
-			let state = state.get_mut::<CompositorState<I, G>>();
-			state.handle_shm_pool_request(this, request);
-		});
+		request.id.register_fn(
+			ShmPoolData::<G>::new(RefCell::new(shm_pool)),
+			|state, this, request| {
+				let state = state.get_mut::<CompositorState<I, G>>();
+				state.handle_shm_pool_request(this, request);
+			},
+			|_state, _this| {
+				log::warn!("wl_shm_pool destructor not implemented");
+			},
+		);
 	}
 
 	pub fn handle_shm_pool_request(&mut self, this: Resource<WlShmPool>, request: WlShmPoolRequest) {
@@ -74,10 +86,16 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			)
 			.expect("Failed to create shm buffer");
 		
-		request.id.register_fn(BufferData::<G>::new(shm_buffer), |state, this, request| {
-			let state = state.get_mut::<Self>();
-			state.handle_buffer_request(this, request);
-		});
+		request.id.register_fn(
+			BufferData::<G>::new(shm_buffer),
+			|state, this, request| {
+				let state = state.get_mut::<Self>();
+				state.handle_buffer_request(this, request);
+			},
+			|_state, _this| {
+				log::warn!("wl_buffer destructor not implemented");
+			},
+		);
 	}
 
 	pub fn handle_shm_pool_resize(&mut self, this: Resource<WlShmPool>, request: wl_shm_pool::ResizeRequest) {

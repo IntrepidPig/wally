@@ -93,10 +93,14 @@ impl XdgToplevelData {
 impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub(crate) fn setup_xdg_wm_base_global(&mut self) {
 		self.server.register_global(|new: NewResource<XdgWmBase>| {
-			new.register_fn((), |state, this, request| {
-				let state = state.get_mut::<CompositorState<I, G>>();
-				state.handle_xdg_wm_base_request(this, request);
-			});
+			new.register_fn(
+				(),
+				|state, this, request| {
+					let state = state.get_mut::<CompositorState<I, G>>();
+					state.handle_xdg_wm_base_request(this, request);
+				},
+				|_state, _this| { },
+			);
 		});
 	}
 }
@@ -113,10 +117,16 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 	pub fn handle_xdg_wm_base_get_xdg_surface(&mut self, _this: Resource<XdgWmBase>, request: xdg_wm_base::GetXdgSurfaceRequest) {
 		let xdg_surface_data = XdgSurfaceData::new(request.surface.clone());
-		let xdg_surface = request.id.register_fn(RefCell::new(xdg_surface_data), |state, this, request| {
-			let state = state.get_mut::<Self>();
-			state.handle_xdg_surface_request(this, request);
-		});
+		let xdg_surface = request.id.register_fn(
+			RefCell::new(xdg_surface_data),
+			|state, this, request| {
+				let state = state.get_mut::<Self>();
+				state.handle_xdg_surface_request(this, request);
+			},
+			|_state, _this| {
+				log::warn!("xdg_surface destructor not implemented");
+			},
+		);
 
 		let parent_surface_data: Ref<RefCell<SurfaceData<G>>> = request.surface.get_user_data();
 		parent_surface_data.borrow_mut().role = Some(Role::XdgSurface(xdg_surface));
@@ -124,7 +134,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 	pub fn handle_xdg_surface_request(&mut self, this: Resource<XdgSurface>, request: XdgSurfaceRequest) {
 		match request {
-			XdgSurfaceRequest::Destroy => log::warn!("xdg_surface::destroy not implemented"),
+			XdgSurfaceRequest::Destroy => self.handle_xdg_surface_destroy(this),
 			XdgSurfaceRequest::GetToplevel(request) => self.handle_xdg_surface_get_toplevel(this, request),
 			XdgSurfaceRequest::GetPopup(_request) => log::warn!("xdg_surface::get_popup not implemented"),
 			XdgSurfaceRequest::SetWindowGeometry(request) => self.handle_xdg_surface_set_window_geometry(this, request),
@@ -132,13 +142,25 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
+	pub fn handle_xdg_surface_destroy(&mut self, this: Resource<XdgSurface>) {
+		// TODO: should this be called automatically by the server implementation upon receiving a destruct message?
+		this.destroy();
+	}
+
 	pub fn handle_xdg_surface_get_toplevel(&mut self, this: Resource<XdgSurface>, request: xdg_surface::GetToplevelRequest) {
 		let xdg_toplevel_data = XdgToplevelData::new();
-		let xdg_toplevel = request.id.register_fn(RefCell::new(xdg_toplevel_data), |state, this, request| {
-			let state = state.get_mut::<Self>();
-			state.handle_xdg_toplevel_request(this, request);
-		});
+		let xdg_toplevel = request.id.register_fn(
+			RefCell::new(xdg_toplevel_data),
+			|state, this, request| {
+				let state = state.get_mut::<Self>();
+				state.handle_xdg_toplevel_request(this, request);
+			},
+			|_state, _this| {
+				log::warn!("xdg_toplevel destructor not implemented");
+			},
+		);
 
+		// Set the role of the parent XdgSurface
 		let xdg_surface_data: Ref<RefCell<XdgSurfaceData>> = this.get_user_data();
 		xdg_surface_data.borrow_mut().xdg_surface_role = Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
 

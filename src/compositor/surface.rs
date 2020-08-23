@@ -17,14 +17,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	}
 
 	pub fn handle_surface_destroy(&mut self, this: Resource<WlSurface>) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
-		let mut surface_data = surface_data.borrow_mut();
-		match self.graphics_state.renderer.destroy_surface_renderer_data(surface_data.renderer_data.take().unwrap()) {
-			Ok(()) => {},
-			Err(e) => {
-				log::error!("Failed to destroy surface renderer data: {}", e);
-			},
-		};
+		log::debug!("wl_surface::destroy request received");
 		this.destroy();
 	}
 
@@ -33,11 +26,8 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let surface_data = &mut *surface_data.borrow_mut();
 
 		// Release the previously attached buffer if it hasn't been committed yet
-		if let Some(old_buffer) = surface_data.pending_state.attached_buffer.take()
-		{
-			if let Some((old_buffer, _point)) = old_buffer {
-				old_buffer.send_event(WlBufferEvent::Release);
-			}
+		if let Some(Some((old_buffer, _))) = surface_data.pending_state.attached_buffer.take() {
+			old_buffer.send_event(WlBufferEvent::Release);
 		};
 		// Attach the new buffer to the surface
 		if let Some(buffer) = request.buffer {
@@ -66,7 +56,11 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_surface_frame(&mut self, this: Resource<WlSurface>, request: wl_surface::FrameRequest) {
 		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
 		let surface_data = &mut *surface_data.borrow_mut();
-		let callback = request.callback.register_fn((), |_, _, _| {});
+		let callback = request.callback.register_fn(
+			(),
+			|_, _, _| {},
+			|_, _| {},
+		);
 		surface_data.callback = Some(callback);
 	}
 }
@@ -230,8 +224,7 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 		}
 	}
 
-	/* pub fn destroy(&mut self) {
-		// TODO: does this need to destroy the SurfaceRenderData too? TODO! yes, yes it does
+	pub fn destroy(&mut self) {
 		if let Some((buffer, _point)) = self.pending_state.attached_buffer.take().and_then(|opt| opt) {
 			buffer.send_event(WlBufferEvent::Release);
 		}
@@ -241,7 +234,7 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 		if let Some(mut role) = self.role.take() {
 			role.destroy();
 		}
-	} */
+	}
 }
 
 impl_user_data_graphics!(WlSurface, RefCell<SurfaceData<G>>);

@@ -10,10 +10,16 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 		let outputs = self.state().graphics_state.renderer.outputs();
 		for output in outputs {
 			let output_global = self.server.register_global::<WlOutput, _>(move |new: NewResource<WlOutput>| {
-				let output_resource = new.register_fn(OutputData::new(output), |state, this, request| {
-					let state = state.get_mut::<CompositorState<I, G>>();
-					state.handle_output_request(this, request);
-				});
+				let output_resource = new.register_fn(
+					OutputData::new(output),
+					|state, this, request| {
+						let state = state.get_mut::<CompositorState<I, G>>();
+						state.handle_output_request(this, request);
+					},
+					|_state, _this| {
+						log::warn!("wl_output destructor not implemented");
+					},
+				);
 
 				let client = output_resource.client();
 				let client = client.get().unwrap();

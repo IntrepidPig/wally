@@ -55,6 +55,7 @@ pub mod prelude {
 		impl_user_data, impl_user_data_graphics,
 		backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress, PointerButton, PointerMotion, PressState},
 		compositor::{
+			get_input_serial,
 			CompositorState, client::ClientState, role::Role, surface::SurfaceData, PointerState, Synced, UserDataAccess,
 			shm::{BufferData},
 		},

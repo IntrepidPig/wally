@@ -9,6 +9,7 @@ pub enum Role {
 	XdgSurface(Resource<XdgSurface>),
 }
 
+// TODO: maybe move these to CompositorState impl like in the xdg module?
 impl Role {
 	pub fn destroy(&mut self) {
 		match *self {

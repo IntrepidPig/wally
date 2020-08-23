@@ -45,6 +45,7 @@ impl EasyShmPool {
 		Ok(())
 	}
 
+	// TODO: remove
 	pub unsafe fn duplicate(&self) -> Self {
 		EasyShmPool {
 			ptr: self.ptr,

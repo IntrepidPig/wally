@@ -354,6 +354,7 @@ impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 				callback_data: crate::compositor::get_input_serial(),
 			};
 			callback.send_event(WlCallbackEvent::Done(done_event));
+			callback.destroy();
 		}
 
 		Ok(())
