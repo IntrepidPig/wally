@@ -68,6 +68,14 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn destroy_surface(&mut self, surface: Resource<WlSurface>) {
 		self.inner.window_manager.remove_surface(surface.clone());
 
+		if self.inner.pointer_focus.as_ref().map(|focus| focus.is(&surface)).unwrap_or(false) {
+			self.inner.pointer_focus.take();
+		}
+
+		if self.inner.keyboard_focus.as_ref().map(|focus| focus.is(&surface)).unwrap_or(false) {
+			self.inner.keyboard_focus.take();
+		}
+
 		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
 		let mut surface_data = surface_data.borrow_mut();
 
