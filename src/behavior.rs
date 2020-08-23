@@ -28,7 +28,7 @@ pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
 	fn get_surface_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
 		let mut got_surface = None;
 		for surface in self.surfaces_ascending() {
-			let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+			let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
 			if surface_data.borrow()
 				.try_get_surface_geometry()
 				.map(|geometry| geometry.contains_point(point))
@@ -43,7 +43,7 @@ pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
 	fn get_window_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
 		let mut got_surface = None;
 		for surface in self.surfaces_ascending() {
-			let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+			let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
 			if surface_data.borrow()
 				.try_get_window_geometry()
 				.map(|geometry| geometry.contains_point(point))
@@ -108,7 +108,7 @@ impl<G: GraphicsBackend + 'static> DumbWindowManagerBehavior<G> {
 impl<G: GraphicsBackend + 'static> WindowManagerBehavior<G> for DumbWindowManagerBehavior<G> {
 	fn add_surface(&mut self, surface: Resource<WlSurface>) {
 		let surface_clone = surface.clone();
-		let surface_data = surface_clone.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface_clone.get_user_data();
 		if surface_data.borrow().role.is_some() {
 			// TODO: get the position and size from the role... unless you don't want to. it is dumb after all
 			let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);

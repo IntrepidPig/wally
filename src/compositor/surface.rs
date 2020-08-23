@@ -1,6 +1,6 @@
 use crate::{backend::ShmBuffer, compositor::prelude::*, renderer::SurfaceRendererData};
 
-impl<I: InputBackend, G: GraphicsBackend + 'static> CompositorState<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_surface_request(&mut self, this: Resource<WlSurface>, request: WlSurfaceRequest) {
 		match request {
 			WlSurfaceRequest::Destroy => self.handle_surface_destroy(this),
@@ -17,7 +17,7 @@ impl<I: InputBackend, G: GraphicsBackend + 'static> CompositorState<I, G> {
 	}
 
 	pub fn handle_surface_destroy(&mut self, this: Resource<WlSurface>) {
-		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
 		let mut surface_data = surface_data.borrow_mut();
 		match self.graphics_state.renderer.destroy_surface_renderer_data(surface_data.renderer_data.take().unwrap()) {
 			Ok(()) => {},
@@ -29,7 +29,7 @@ impl<I: InputBackend, G: GraphicsBackend + 'static> CompositorState<I, G> {
 	}
 
 	pub fn handle_surface_attach(&mut self, this: Resource<WlSurface>, request: wl_surface::AttachRequest) {
-		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
 		let surface_data = &mut *surface_data.borrow_mut();
 
 		// Release the previously attached buffer if it hasn't been committed yet
@@ -49,22 +49,22 @@ impl<I: InputBackend, G: GraphicsBackend + 'static> CompositorState<I, G> {
 	}
 
 	pub fn handle_surface_commit(&mut self, this: Resource<WlSurface>) {
-		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
 		let mut surface_data = surface_data.borrow_mut();
 
 		// TODO: relying on the impl of ShmBuffer to ascertain the size of the buffer is probably unsound if the ShmBuffer impl lies.
 		// So that trait should either be unsafe, or Shm should be moved out of the Rendering backend and EasyShm should be made canonical
 		surface_data.commit_pending_state();
 		if let Some((ref committed_buffer, _point)) = surface_data.committed_buffer {
-			let buffer_data = committed_buffer.get_data::<G::ShmBuffer>().unwrap();
-			let _new_size = Size::new(buffer_data.width(), buffer_data.height());
+			let buffer_data: Ref<BufferData<G>> = committed_buffer.get_user_data();
+			let _new_size = Size::new(buffer_data.buffer.width(), buffer_data.buffer.height());
 
 			log::debug!("TODO: handle surface resize as window manager");
 		}
 	}
 
 	pub fn handle_surface_frame(&mut self, this: Resource<WlSurface>, request: wl_surface::FrameRequest) {
-		let surface_data = this.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
 		let surface_data = &mut *surface_data.borrow_mut();
 		let callback = request.callback.register_fn((), |_, _, _| {});
 		surface_data.callback = Some(callback);
@@ -116,7 +116,7 @@ pub struct SurfaceData<G: GraphicsBackend> {
 	size: Option<Size>,
 }
 
-impl<G: GraphicsBackend + 'static> SurfaceData<G> {
+impl<G: GraphicsBackend> SurfaceData<G> {
 	pub fn new(client: Handle<Client>, renderer_data: SurfaceRendererData<G>) -> Self {
 		Self {
 			client,
@@ -206,16 +206,16 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 					// TODO
 					log::error!("Buffer attachments with a specific position are not supported yet");
 				}
-				let committed_buffer_data = new_buffer.get_data::<G::ShmBuffer>().unwrap();
+				let committed_buffer_data: Ref<BufferData<G>> = new_buffer.get_user_data();
 				if let Some(role) = self.role.as_mut() {
 					role.set_surface_size(Size::new(
-						committed_buffer_data.width() as u32,
-						committed_buffer_data.height() as u32,
+						committed_buffer_data.buffer.width() as u32,
+						committed_buffer_data.buffer.height() as u32,
 					));
 				}
 				self.buffer_size = Some(Size::new(
-					committed_buffer_data.width() as u32,
-					committed_buffer_data.height() as u32,
+					committed_buffer_data.buffer.width() as u32,
+					committed_buffer_data.buffer.height() as u32,
 				))
 			} else {
 				self.buffer_size = None;
@@ -243,3 +243,5 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 		}
 	} */
 }
+
+impl_user_data_graphics!(WlSurface, RefCell<SurfaceData<G>>);

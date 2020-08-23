@@ -24,7 +24,7 @@ pub struct LibinputInputBackend {
 }
 
 impl LibinputInputBackend {
-	pub fn new<I: InputBackend + 'static, G: GraphicsBackend + 'static>(
+	pub fn new<I: InputBackend, G: GraphicsBackend>(
 		event_loop_handle: LoopHandle<Compositor<I, G>>,
 	) -> Result<Self, ()> {
 		struct RootLibinputInterface;

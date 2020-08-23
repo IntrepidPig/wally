@@ -16,7 +16,7 @@ pub mod libinput;
 pub mod vulkan;
 pub mod winit;
 
-pub trait InputBackend {
+pub trait InputBackend: 'static {
 	type Error: fmt::Debug + fmt::Display;
 
 	fn update(&mut self) -> Result<(), Self::Error>;
@@ -36,7 +36,7 @@ pub struct OutputInfo {
 	pub size: Size,
 }
 
-pub trait GraphicsBackend: Sized + fmt::Debug {
+pub trait GraphicsBackend: Sized + fmt::Debug + 'static {
 	type Error: StdError + fmt::Debug + fmt::Display;
 
 	type ShmPool: Send + fmt::Debug;

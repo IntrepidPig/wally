@@ -7,8 +7,8 @@ use wl_protocols::xdg_shell::*;
 use crate::{
 	backend::{GraphicsBackend, InputBackend},
 	compositor::{prelude::*, surface::SurfaceData, Compositor},
-	renderer::Output,
 };
+use super::output::OutputData;
 
 // This object serves as the Role for a WlSurface, and so it is owned by the WlSurface. As such, it
 // should not contain a strong reference to the WlSurface or a reference cycle would be created.
@@ -90,7 +90,7 @@ impl XdgToplevelData {
 	}
 }
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub(crate) fn setup_xdg_wm_base_global(&mut self) {
 		self.server.register_global(|new: NewResource<XdgWmBase>| {
 			new.register_fn((), |state, this, request| {
@@ -101,7 +101,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	}
 }
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_xdg_wm_base_request(&mut self, this: Resource<XdgWmBase>, request: XdgWmBaseRequest) {
 		match request {
 			XdgWmBaseRequest::Destroy => log::warn!("xdg_wm_base::destroy not implemented"),
@@ -118,7 +118,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 			state.handle_xdg_surface_request(this, request);
 		});
 
-		let parent_surface_data = request.surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let parent_surface_data: Ref<RefCell<SurfaceData<G>>> = request.surface.get_user_data();
 		parent_surface_data.borrow_mut().role = Some(Role::XdgSurface(xdg_surface));
 	}
 
@@ -139,23 +139,23 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 			state.handle_xdg_toplevel_request(this, request);
 		});
 
-		let xdg_surface_data = this.get_data::<RefCell<XdgSurfaceData>>().unwrap();
+		let xdg_surface_data: Ref<RefCell<XdgSurfaceData>> = this.get_user_data();
 		xdg_surface_data.borrow_mut().xdg_surface_role = Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
 
 		self.inner.window_manager.manager_impl.add_surface(xdg_surface_data.borrow().parent.clone());
 		
 		// Send a wl_surface::enter event for every output this surface intersects with. TODO (should this be in the surface module?)
 		let surface_data = xdg_surface_data.borrow();
-		let surface_data = surface_data.parent.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface_data.parent.get_user_data();
 
 		let client = this.client();
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState>>();
 	
 		for output in &client_state.borrow().outputs {
-			let output_data = output.get_data::<Output<G>>().unwrap();
+			let output_data: Ref<OutputData<G>> = output.get_user_data();
 			if let Some(surface_geometry) = surface_data.borrow().try_get_surface_geometry() {
-				if surface_geometry.intersects(output_data.viewport) {
+				if surface_geometry.intersects(output_data.output.viewport) {
 					xdg_surface_data.borrow().parent.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
 						output: output.clone(),
 					}));
@@ -167,7 +167,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 	pub fn handle_xdg_surface_set_window_geometry(&mut self, this: Resource<XdgSurface>, request: xdg_surface::SetWindowGeometryRequest) {
 		let solid_window_geometry = Rect::new(request.x, request.y, request.width as u32, request.height as u32);
 		
-		let xdg_surface_data = this.get_data::<RefCell<XdgSurfaceData>>().unwrap();
+		let xdg_surface_data: Ref<RefCell<XdgSurfaceData>> = this.get_user_data();
 		xdg_surface_data.borrow_mut().solid_window_geometry = Some(solid_window_geometry);
 	}
 
@@ -192,6 +192,9 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 
 	pub fn handle_xdg_toplevel_set_title(&mut self, this: Resource<XdgToplevel>, request: xdg_toplevel::SetTitleRequest) {
 		let title = String::from_utf8_lossy(&request.title).into_owned();
-		this.get_data::<RefCell<XdgToplevelData>>().unwrap().borrow_mut().title = Some(title);
+		this.get_user_data().borrow_mut().title = Some(title);
 	}
 }
+
+impl_user_data!(XdgSurface, RefCell<XdgSurfaceData>);
+impl_user_data!(XdgToplevel, RefCell<XdgToplevelData>);

@@ -2,15 +2,15 @@ use std::ffi::CString;
 
 use crate::{
 	backend::{GraphicsBackend, InputBackend},
-	compositor::{Compositor, prelude::*},
+	compositor::{Compositor, prelude::*}, renderer::Output,
 };
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub(crate) fn setup_output_globals(&mut self) {
 		let outputs = self.state().graphics_state.renderer.outputs();
 		for output in outputs {
 			let output_global = self.server.register_global::<WlOutput, _>(move |new: NewResource<WlOutput>| {
-				let output_resource = new.register_fn(output, |state, this, request| {
+				let output_resource = new.register_fn(OutputData::new(output), |state, this, request| {
 					let state = state.get_mut::<CompositorState<I, G>>();
 					state.handle_output_request(this, request);
 				});
@@ -52,7 +52,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	}
 }
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_output_request(&mut self, this: Resource<WlOutput>, request: WlOutputRequest) {
 		match request {
 			WlOutputRequest::Release => self.handle_output_release(this),
@@ -63,3 +63,17 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 		log::warn!("Output release handling unimplemented");
 	}
 }
+
+pub struct OutputData<G: GraphicsBackend> {
+	pub output: Output<G>,
+}
+
+impl<G: GraphicsBackend> OutputData<G> {
+	pub fn new(output: Output<G>) -> Self {
+		Self {
+			output,
+		}
+	}
+}
+
+impl_user_data_graphics!(WlOutput, OutputData<G>);

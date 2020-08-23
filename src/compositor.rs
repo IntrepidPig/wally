@@ -41,17 +41,23 @@ pub mod prelude {
 		cell::{RefCell},
 	};
 
+	pub use loaner::{Owner, Handle, Ref};
+
 	//pub use wayland_server::{protocol::*, Client, Display, Filter, Main};
 	pub use wl_server::{
 		protocol::*,
-		Client, Server, Resource, NewResource, Owner, Handle, Global,
+		Client, Server, Resource, NewResource, Global,
 	};
 
 	pub use festus::geometry::*;
 
 	pub use crate::{
+		impl_user_data, impl_user_data_graphics,
 		backend::{BackendEvent, GraphicsBackend, InputBackend, KeyPress, PointerButton, PointerMotion, PressState},
-		compositor::{CompositorState, client::ClientState, role::Role, surface::SurfaceData, PointerState, Synced},
+		compositor::{
+			CompositorState, client::ClientState, role::Role, surface::SurfaceData, PointerState, Synced, UserDataAccess,
+			shm::{BufferData},
+		},
 	};
 }
 
@@ -165,7 +171,7 @@ pub struct ClientResources {
 	pub pointer: Option<wl_pointer::WlPointer>,
 }
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub fn new(
 		mut input_backend: I,
 		graphics_backend: G,
@@ -364,7 +370,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 				let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 
 				if let Some(surface) = state.inner.window_manager.get_window_under_point(pointer_pos) {
-					let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+					let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
 					let client = surface.client();
 					let client = client.get().unwrap();
 					let client_state = client.state::<RefCell<ClientState>>();
@@ -563,8 +569,44 @@ impl<I: InputBackend, G: GraphicsBackend> Drop for Compositor<I, G> {
 	}
 }
 
+pub trait UserDataAccess<T> {
+	fn try_get_user_data(&self) -> Option<Ref<T>>;
+
+	fn get_user_data(&self) -> Ref<T> {
+		self.try_get_user_data().expect("Object was destroyed")
+	}
+}
+
+#[macro_export]
+macro_rules! impl_user_data_graphics {
+	($i:ty, $t:ty) => {
+		impl<G: GraphicsBackend> UserDataAccess<$t> for Resource<$i> {
+			fn try_get_user_data(&self) -> Option<Ref<$t>> {
+				self.object().get().map(|object| {
+					let data = object.get_data::<$t>().unwrap().upgrade();
+					data.custom_ref()
+				})
+			}
+		}
+	};
+}
+
+#[macro_export]
+macro_rules! impl_user_data {
+	($i:ty, $t:ty) => {
+		impl UserDataAccess<$t> for Resource<$i> {
+			fn try_get_user_data(&self) -> Option<Ref<$t>> {
+				self.object().get().map(|object| {
+					let data = object.get_data::<$t>().unwrap().upgrade();
+					data.custom_ref()
+				})
+			}
+		}
+	}
+}
+
 #[derive(Debug, Error)]
-pub enum CompositorError<G: GraphicsBackend + 'static> {
+pub enum CompositorError<G: GraphicsBackend> {
 	#[error("There was an error with the server")]
 	ServerError(#[from] ServerError),
 	#[error("There was an error creating the server")]

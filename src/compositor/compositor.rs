@@ -2,7 +2,7 @@ use crate::{
 	compositor::{Compositor, prelude::*},
 };
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub fn setup_compositor_global(&mut self) {
 		self.server.register_global::<WlCompositor, _>(|new: NewResource<_>| {
 			new.register_fn((), |state, this, request| {
@@ -13,7 +13,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	}
 }
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_compositor_request(&mut self, this: Resource<WlCompositor>, request: WlCompositorRequest) {
 		match request {
 			WlCompositorRequest::CreateSurface(request) => self.handle_surface_create(this, request),

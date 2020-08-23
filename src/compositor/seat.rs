@@ -3,7 +3,7 @@ use crate::{
 	compositor::{Compositor, prelude::*},
 };
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub fn setup_seat_global(&mut self) {
 		self.server.register_global(|new: NewResource<WlSeat>| {
 			let seat = new.register_fn((), |state, this, request| {
@@ -19,7 +19,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	}
 }
 
-impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I, G> {
+impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_seat_request(&mut self, this: Resource<WlSeat>, request: WlSeatRequest) {
 		match request {
 			WlSeatRequest::GetPointer(request) => self.handle_seat_get_pointer(this, request),

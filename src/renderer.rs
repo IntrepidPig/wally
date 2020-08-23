@@ -185,8 +185,8 @@ impl<G: GraphicsBackend> Renderer<G> {
 		&mut self,
 		wl_buffer: Resource<WlBuffer>,
 	) -> Result<G::TextureHandle, G::Error> {
-		let buffer_data = wl_buffer.get_data::<G::ShmBuffer>().unwrap();
-		let texture_handle = self.backend.create_texture_from_shm_buffer(&*buffer_data)?;
+		let buffer_data: Ref<BufferData<G>> = wl_buffer.get_user_data();
+		let texture_handle = self.backend.create_texture_from_shm_buffer(&buffer_data.buffer)?;
 		Ok(texture_handle)
 	}
 
@@ -274,7 +274,7 @@ pub struct SceneRenderState<'a, G: GraphicsBackend> {
 	pub renderer: &'a mut Renderer<G>,
 }
 
-impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
+impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 	pub fn draw(
 		&mut self,
 		vertex_buffer: G::VertexBufferHandle,
@@ -289,7 +289,7 @@ impl<'a, G: GraphicsBackend + 'static> SceneRenderState<'a, G> {
 
 	/// Draw a surface on
 	pub fn draw_surface(&mut self, surface: Resource<WlSurface>) -> Result<(), G::Error> {
-		let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
 		let mut surface_data = surface_data.borrow_mut();
 
 		// If the surface has been committed a buffer that hasn't been uploaded to the graphics
@@ -416,7 +416,7 @@ fn get_local_coordinates(viewport: Rect, rect: Rect) -> Option<Point> {
 }
 
 #[derive(Debug, Error)]
-pub enum RendererError<G: GraphicsBackend + 'static>
+pub enum RendererError<G: GraphicsBackend>
 where
 	Self: From<G::Error>,
 {
