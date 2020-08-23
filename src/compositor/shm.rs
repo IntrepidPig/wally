@@ -63,8 +63,8 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn handle_shm_pool_destroy(&mut self, _this: Resource<WlShmPool>) {
-		log::warn!("Shm pool destruction not implemented");
+	pub fn handle_shm_pool_destroy(&mut self, this: Resource<WlShmPool>) {
+		this.destroy();
 	}
 
 	pub fn handle_shm_pool_create_buffer(&mut self, this: Resource<WlShmPool>, request: wl_shm_pool::CreateBufferRequest) {
@@ -112,8 +112,8 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn handle_buffer_destroy(&mut self, _this: Resource<WlBuffer>) {
-		log::warn!("Buffer destruction unimplemented");
+	pub fn handle_buffer_destroy(&mut self, this: Resource<WlBuffer>) {
+		this.destroy();
 	}
 }
 

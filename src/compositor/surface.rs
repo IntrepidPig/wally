@@ -1,4 +1,17 @@
-use crate::{backend::ShmBuffer, compositor::prelude::*, renderer::SurfaceRendererData};
+use std::{
+	fmt,
+};
+
+use wl_protocols::xdg_shell::*;
+
+use super::prelude::*;
+use crate::{
+	backend::{ShmBuffer},
+	compositor::{
+		shm::{BufferData}
+	},
+	renderer::{SurfaceRendererData},
+};
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_surface_request(&mut self, this: Resource<WlSurface>, request: WlSurfaceRequest) {
@@ -62,7 +75,10 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			|_, _, _| {},
 			|_, _| {},
 		);
-		surface_data.callback = Some(callback);
+		
+		if let Some(old_callback) = surface_data.callback.replace(callback) {
+			old_callback.destroy();
+		}
 	}
 
 	pub fn destroy_surface(&mut self, surface: Resource<WlSurface>) {
@@ -210,3 +226,53 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 }
 
 impl_user_data_graphics!(WlSurface, RefCell<SurfaceData<G>>);
+
+#[derive(Clone)]
+pub enum Role {
+	XdgSurface(Resource<XdgSurface>),
+}
+
+// TODO: maybe move these to CompositorState impl like in the xdg module?
+impl Role {
+	pub fn destroy(&mut self) {
+		match *self {
+			Role::XdgSurface(ref _xdg_surface) => {}
+		}
+	}
+
+	pub fn commit_pending_state(&mut self) {
+		match self {
+			Role::XdgSurface(ref xdg_surface) => {
+				xdg_surface.get_user_data().borrow_mut().commit_pending_state()
+			}
+		}
+	}
+
+	pub fn set_surface_size(&mut self, _size: Size) {
+		match self {
+			Role::XdgSurface(ref _xdg_surface) => log::warn!("Set surface size not fully implemented"),
+		}
+	}
+
+	pub fn get_solid_window_geometry(&self) -> Option<Rect> {
+		match self {
+			Role::XdgSurface(ref xdg_surface) => {
+				let xdg_surface_data = xdg_surface.get_user_data();
+				let geometry = xdg_surface_data.borrow().solid_window_geometry;
+				geometry
+			}
+		}
+	}
+}
+
+impl fmt::Debug for Role {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match *self {
+			Role::XdgSurface(ref xdg_surface) => {
+				let xdg_surface_data = xdg_surface.get_user_data();
+				let res = write!(f, "Role: {:?}", xdg_surface_data.borrow());
+				res
+			}
+		}
+	}
+}

@@ -4,11 +4,7 @@ use std::{
 
 use wl_protocols::xdg_shell::*;
 
-use crate::{
-	backend::{GraphicsBackend, InputBackend},
-	compositor::{prelude::*, surface::SurfaceData, Compositor},
-};
-use super::output::OutputData;
+use super::prelude::*;
 
 // This object serves as the Role for a WlSurface, and so it is owned by the WlSurface. As such, it
 // should not contain a strong reference to the WlSurface or a reference cycle would be created.

@@ -1,6 +1,4 @@
-use crate::{
-	compositor::{Compositor, prelude::*},
-};
+use super::prelude::*;
 
 impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 	pub fn setup_compositor_global(&mut self) {

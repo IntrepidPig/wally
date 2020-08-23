@@ -6,7 +6,10 @@ use thiserror::Error;
 
 use crate::{
 	backend::{GraphicsBackend, RgbaInfo, Vertex},
-	compositor::{prelude::*, surface::SurfaceData}, behavior::Node,
+	compositor::{prelude::*, surface::SurfaceData, shm::BufferData},
+	behavior::{
+		window::{Node},
+	}
 };
 
 #[derive(Debug)]

@@ -19,7 +19,6 @@ pub mod backend;
 pub mod compositor;
 //pub mod logind;
 pub mod behavior;
-pub mod input;
 pub mod renderer;
 //pub mod wl;
 
