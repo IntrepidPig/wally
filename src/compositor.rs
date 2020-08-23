@@ -17,7 +17,6 @@ use crate::{
 	backend::{BackendEvent, GraphicsBackend, InputBackend},
 	behavior::WindowManager,
 	compositor::prelude::*,
-	compositor::surface::SurfaceData,
 	input::KeyboardState,
 	renderer::{Output, Renderer},
 };
@@ -206,7 +205,7 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 		let pointer_state = PointerState::new();
 		let keyboard_state = KeyboardState::new();
 
-		let window_manager = WindowManager::new(Box::new(crate::behavior::DumbWindowManagerBehavior::new()));
+		let window_manager = WindowManager::new();
 
 		let inner = CompositorInner {
 			running: true,
@@ -280,8 +279,8 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 				state.graphics_state
 					.renderer
 					.render_scene(|mut scene_render_state| {
-						for surface in inner.window_manager.manager_impl.surfaces_ascending() {
-							scene_render_state.draw_surface(surface)?;
+						for node in inner.window_manager.tree.nodes_ascending() {
+							scene_render_state.draw_node(&*node)?;
 						}
 						let pointer_state = &inner.pointer;
 						let pointer_pos =
@@ -370,14 +369,14 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 				pointer_state.pos.1 += pointer_motion.dy_unaccelerated * pointer_state.sensitivity;
 				let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 
-				if let Some(surface) = state.inner.window_manager.get_window_under_point(pointer_pos) {
-					let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+				if let Some(node) = state.inner.window_manager.get_window_under_point(pointer_pos) {
+					let surface = node.surface.borrow().clone();
 					let client = surface.client();
 					let client = client.get().unwrap();
 					let client_state = client.state::<RefCell<ClientState>>();
 
 					let surface_relative_coords =
-						if let Some(geometry) = surface_data.borrow().try_get_surface_geometry() {
+						if let Some(geometry) = node.geometry() {
 							Point::new(pointer_pos.x - geometry.x, pointer_pos.y - geometry.y)
 						} else {
 							// This should probably not happen because the window manager just told us the pointer is
@@ -451,7 +450,8 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 				let pointer_state = &mut state.inner.pointer;
 				let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 
-				if let Some(surface) = state.inner.window_manager.get_window_under_point(pointer_pos) {
+				if let Some(node) = state.inner.window_manager.get_window_under_point(pointer_pos) {
+					let surface = node.surface.borrow().clone();
 					let client = surface.client();
 					let client = client.get().unwrap();
 					let client_state = client.state::<RefCell<ClientState>>();

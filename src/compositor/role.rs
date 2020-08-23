@@ -25,19 +25,6 @@ impl Role {
 		}
 	}
 
-	pub fn request_resize(&self, size: Size) {
-		match self {
-			Role::XdgSurface(ref xdg_surface) => {
-				let xdg_surface_data = xdg_surface.get_user_data();
-				xdg_surface_data.borrow().request_resize(size);
-				let configure_event = xdg_surface::ConfigureEvent {
-					serial: 42, // TODO: what should this actually be
-				};
-				xdg_surface.send_event(XdgSurfaceEvent::Configure(configure_event));
-			}
-		}
-	}
-
 	pub fn set_surface_size(&mut self, _size: Size) {
 		match self {
 			Role::XdgSurface(ref _xdg_surface) => log::warn!("Set surface size not fully implemented"),

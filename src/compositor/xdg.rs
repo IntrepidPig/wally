@@ -35,12 +35,6 @@ impl XdgSurfaceData {
 			self.solid_window_geometry = Some(solid_window_geometry);
 		}
 	}
-
-	pub fn request_resize(&self, size: Size) {
-		if let Some(ref xdg_surface_role) = self.xdg_surface_role {
-			xdg_surface_role.request_resize(size)
-		}
-	}
 }
 
 #[derive(Debug, Default, Clone)]
@@ -51,21 +45,6 @@ pub struct XdgSurfacePendingState {
 #[derive(Clone)]
 pub enum XdgSurfaceRole {
 	XdgToplevel(Resource<XdgToplevel>),
-}
-
-impl XdgSurfaceRole {
-	pub fn request_resize(&self, size: Size) {
-		match *self {
-			XdgSurfaceRole::XdgToplevel(ref xdg_toplevel) => {
-				let configure_event = xdg_toplevel::ConfigureEvent {
-					width: size.width as i32,
-					height: size.height as i32,
-					states: Vec::new(), // TODO: investigate,
-				};
-				xdg_toplevel.send_event(XdgToplevelEvent::Configure(configure_event));
-			}
-		}
-	}
 }
 
 impl fmt::Debug for XdgSurfaceRole {
@@ -164,21 +143,23 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let xdg_surface_data: Ref<RefCell<XdgSurfaceData>> = this.get_user_data();
 		xdg_surface_data.borrow_mut().xdg_surface_role = Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
 
-		self.inner.window_manager.manager_impl.add_surface(xdg_surface_data.borrow().parent.clone());
-		
-		// Send a wl_surface::enter event for every output this surface intersects with. TODO (should this be in the surface module?)
-		let surface_data = xdg_surface_data.borrow();
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface_data.parent.get_user_data();
+		self.request_xdg_surface_configure(this.clone(), Size::new(0, 0));
+
+		self.inner.window_manager.add_surface(xdg_surface_data.borrow().parent.clone());
 
 		let client = this.client();
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState>>();
-	
+
+		let xdg_surface_data = xdg_surface_data.borrow();
+		let node = self.inner.window_manager.tree.find(|node| node.surface.borrow().is(&xdg_surface_data.parent));
+
+		// TODO: this should be moved to a generalized place (e.g. handle_surface/node_geometry_change)
 		for output in &client_state.borrow().outputs {
 			let output_data: Ref<OutputData<G>> = output.get_user_data();
-			if let Some(surface_geometry) = surface_data.borrow().try_get_surface_geometry() {
-				if surface_geometry.intersects(output_data.output.viewport) {
-					xdg_surface_data.borrow().parent.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
+			if let Some(node_geometry) = node.as_ref().and_then(|node| node.geometry()) {
+				if node_geometry.intersects(output_data.output.viewport) {
+					xdg_surface_data.parent.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
 						output: output.clone(),
 					}));
 				}
@@ -190,7 +171,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let solid_window_geometry = Rect::new(request.x, request.y, request.width as u32, request.height as u32);
 		
 		let xdg_surface_data: Ref<RefCell<XdgSurfaceData>> = this.get_user_data();
-		xdg_surface_data.borrow_mut().solid_window_geometry = Some(solid_window_geometry);
+		xdg_surface_data.borrow_mut().pending_state.solid_window_geometry = Some(solid_window_geometry);
 	}
 
 	pub fn handle_xdg_toplevel_request(&mut self, this: Resource<XdgToplevel>, request: XdgToplevelRequest) {
@@ -215,6 +196,29 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_xdg_toplevel_set_title(&mut self, this: Resource<XdgToplevel>, request: xdg_toplevel::SetTitleRequest) {
 		let title = String::from_utf8_lossy(&request.title).into_owned();
 		this.get_user_data().borrow_mut().title = Some(title);
+	}
+
+	pub fn request_xdg_surface_configure(&mut self, this: Resource<XdgSurface>, size: Size) {
+		let xdg_surface_data = this.get_user_data();
+		let xdg_surface_data = xdg_surface_data.borrow();
+		if let Some(ref role) = xdg_surface_data.xdg_surface_role {
+			match *role {
+				XdgSurfaceRole::XdgToplevel(ref xdg_toplevel) => self.request_xdg_toplevel_configure(xdg_toplevel.clone(), size),
+			}
+		}
+		let configure_event = xdg_surface::ConfigureEvent {
+			serial: get_input_serial(),
+		};
+		this.send_event(XdgSurfaceEvent::Configure(configure_event));
+	}
+
+	pub fn request_xdg_toplevel_configure(&mut self, this: Resource<XdgToplevel>, size: Size) {
+		let configure_event = xdg_toplevel::ConfigureEvent {
+			width: size.width as i32,
+			height: size.height as i32,
+			states: Vec::new(), // TODO: investigate
+		};
+		this.send_event(XdgToplevelEvent::Configure(configure_event));
 	}
 }
 

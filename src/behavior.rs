@@ -1,78 +1,63 @@
+use std::{
+	cell::{Cell, RefCell}
+};
+
 use crate::compositor::prelude::*;
 
 pub struct WindowManager<G: GraphicsBackend> {
-	pub manager_impl: Box<dyn WindowManagerBehavior<G>>,
+	pub tree: SurfaceTree<G>,
 }
 
-impl<G: GraphicsBackend + 'static> WindowManager<G> {
-	pub fn new(manager_impl: Box<dyn WindowManagerBehavior<G>>) -> Self {
-		Self { manager_impl }
-	}
-
-	pub fn get_surface_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
-		self.manager_impl.get_surface_under_point(point)
-	}
-
-	pub fn get_window_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
-		self.manager_impl.get_window_under_point(point)
-	}
-}
-
-pub trait WindowManagerBehavior<G: GraphicsBackend + 'static> {
-	fn add_surface(&mut self, surface: Resource<WlSurface>);
-
-	fn surfaces_ascending(&self) -> Box<dyn Iterator<Item = Resource<WlSurface>> + '_>;
-
-	fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, size: Size);
-
-	fn get_surface_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
-		let mut got_surface = None;
-		for surface in self.surfaces_ascending() {
-			let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-			if surface_data.borrow()
-				.try_get_surface_geometry()
-				.map(|geometry| geometry.contains_point(point))
-				.unwrap_or(false)
-			{
-				got_surface = Some(surface);
-			}
+impl<G: GraphicsBackend> WindowManager<G> {
+	pub fn new() -> Self {
+		Self {
+			tree: SurfaceTree::new(),
 		}
-		got_surface
 	}
 
-	fn get_window_under_point(&self, point: Point) -> Option<Resource<WlSurface>> {
-		let mut got_surface = None;
-		for surface in self.surfaces_ascending() {
-			let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-			if surface_data.borrow()
-				.try_get_window_geometry()
-				.map(|geometry| geometry.contains_point(point))
-				.unwrap_or(false)
-			{
-				got_surface = Some(surface);
-			}
+	pub fn add_surface(&mut self, surface: Resource<WlSurface>) -> Handle<Node> {
+		let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
+		self.tree.add_surface(surface, position)
+	}
+
+	pub fn remove_surface(&mut self, surface: Resource<WlSurface>) {
+		self.tree.remove_surface(surface);
+	}
+
+	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+		if let Some(node) = self.tree.find_surface(&surface) {
+			node.size.set(Some(new_size));
 		}
-		got_surface
+	}
+
+	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+		if let Some(node) = self.tree.find_surface(&surface) {
+			node.size.set(Some(new_size));
+			node.draw.set(true);
+		}
+	}
+
+	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface>) {
+		if let Some(node) = self.tree.find_surface(&surface) {
+			node.draw.set(false);
+		}
+	}
+
+	pub fn get_surface_under_point(&self, point: Point) -> Option<Ref<Node>> {
+		self.tree.get_surface_under_point(point)
+	}
+
+	pub fn get_window_under_point(&self, point: Point) -> Option<Ref<Node>> {
+		self.tree.get_window_under_point(point)
 	}
 }
 
 pub struct SurfaceTree<G: GraphicsBackend + ?Sized> {
-	pub(crate) nodes: Vec<Node>,
+	pub(crate) nodes: Vec<Owner<Node>>,
 	phantom: PhantomData<G>,
 }
 
-#[derive(Clone)]
-pub struct Node {
-	pub surface: Resource<WlSurface>,
-}
-
-impl From<Resource<WlSurface>> for Node {
-	fn from(surface: Resource<WlSurface>) -> Self {
-		Node { surface }
-	}
-}
-
-impl<G: GraphicsBackend + 'static> SurfaceTree<G> {
+impl<G: GraphicsBackend> SurfaceTree<G> {
 	pub fn new() -> Self {
 		Self {
 			nodes: Vec::new(),
@@ -80,16 +65,88 @@ impl<G: GraphicsBackend + 'static> SurfaceTree<G> {
 		}
 	}
 
-	pub fn add_surface(&mut self, surface: Resource<WlSurface>) {
-		self.nodes.push(Node::from(surface));
+	pub fn add_surface(&mut self, surface: Resource<WlSurface>, position: Point) -> Handle<Node> {
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+		let surface_size = surface_data.borrow().buffer_size;
+		let owner = Owner::new(Node::new(surface, position, surface_size, true));
+		let handle = owner.handle();
+		self.nodes.push(owner);
+		handle
 	}
 
-	pub fn nodes_ascending(&self) -> impl Iterator<Item = &Node> {
-		self.nodes.iter().map(|node| node)
+	pub fn remove_surface(&mut self, surface: Resource<WlSurface>) {
+		if let Some(position) = self.nodes.iter().position(|node| node.surface.borrow().is(&surface)) {
+			self.nodes.remove(position);
+		}
 	}
 
-	pub fn nodes_descending(&self) -> impl Iterator<Item = &Node> {
-		self.nodes_ascending().collect::<Vec<_>>().into_iter().rev()
+	fn get_surface_under_point(&self, point: Point) -> Option<Ref<Node>> {
+		for node in self.nodes_descending() {
+			if let Some(geometry) = node.geometry() {
+				if geometry.contains_point(point) {
+					return Some(node.clone())
+				}
+			}
+		}
+		None
+	}
+
+	fn get_window_under_point(&self, point: Point) -> Option<Ref<Node>> {
+		for node in self.nodes_descending() {
+			if let Some(mut geometry) = node.geometry() {
+				let surface = node.surface.borrow();
+				let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+				if let Some(mut window_geometry) = surface_data.borrow().get_solid_window_geometry() {
+					window_geometry.x += point.x;
+					window_geometry.y += point.y;
+					geometry = window_geometry;
+				};
+				if geometry.contains_point(point) {
+					return Some(node.clone())
+				}
+			}
+		}
+
+		None
+	}
+
+	pub fn find<F: Fn(&Owner<Node>) -> bool>(&self, f: F) -> Option<Ref<Node>> {
+		self.nodes.iter().find(|node| f(node)).map(|node| node.custom_ref())
+	}
+
+	pub fn find_surface(&self, surface: &Resource<WlSurface>) -> Option<Ref<Node>> {
+		self.find(|node| node.surface.borrow().is(surface))
+	}
+
+	pub fn nodes_ascending(&self) -> impl Iterator<Item = Ref<Node>> {
+		self.nodes.iter().map(|node| node.custom_ref())
+	}
+
+	pub fn nodes_descending(&self) -> impl Iterator<Item = Ref<Node>> {
+		self.nodes.iter().rev().map(|node| node.custom_ref())
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct Node {
+	pub surface: RefCell<Resource<WlSurface>>,
+	pub position: Cell<Point>,
+	pub size: Cell<Option<Size>>,
+	pub draw: Cell<bool>,
+}
+
+impl Node {
+	pub fn new(surface: Resource<WlSurface>, position: Point, size: Option<Size>, draw: bool) -> Self {
+		Self {
+			surface: RefCell::new(surface),
+			position: Cell::new(position),
+			size: Cell::new(size),
+			draw: Cell::new(draw),
+		}
+	}
+
+	pub fn geometry(&self) -> Option<Rect> {
+		self.size.get().map(|size| Rect::from(self.position.get(), size))
 	}
 }
 
@@ -97,7 +154,7 @@ pub struct DumbWindowManagerBehavior<G: GraphicsBackend> {
 	pub surface_tree: SurfaceTree<G>,
 }
 
-impl<G: GraphicsBackend + 'static> DumbWindowManagerBehavior<G> {
+impl<G: GraphicsBackend> DumbWindowManagerBehavior<G> {
 	pub fn new() -> Self {
 		Self {
 			surface_tree: SurfaceTree::new(),
@@ -105,43 +162,10 @@ impl<G: GraphicsBackend + 'static> DumbWindowManagerBehavior<G> {
 	}
 }
 
-impl<G: GraphicsBackend + 'static> WindowManagerBehavior<G> for DumbWindowManagerBehavior<G> {
-	fn add_surface(&mut self, surface: Resource<WlSurface>) {
-		let surface_clone = surface.clone();
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface_clone.get_user_data();
-		if surface_data.borrow().role.is_some() {
-			// TODO: get the position and size from the role... unless you don't want to. it is dumb after all
-			let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
-			let size = Size::new(500, 375);
-			surface_data.borrow_mut().set_window_position(position);
-			surface_data.borrow().resize_window(size);
-		} else {
-			panic!("Can't add a surface without a role");
-		}
-		self.surface_tree.add_surface(surface);
-	}
-
-	fn handle_surface_resize(&mut self, _surface: Resource<WlSurface>, _new_size: Size) {
-		log::warn!("Surface resize handling not implemented");
-	}
-
-	fn surfaces_ascending(&self) -> Box<dyn Iterator<Item = Resource<WlSurface>> + '_> {
-		Box::new(self.surface_tree.nodes_ascending().map(|node| node.surface.clone()))
-	}
-}
-
-static mut XOR_STATE: u32 = 0;
-
 fn dumb_rand() -> u32 {
-	unsafe {
-		if XOR_STATE == 0 {
-			XOR_STATE = std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().subsec_nanos();
-		}
-		let mut x = XOR_STATE;
-		x ^= x << 13;
-		x ^= x >> 17;
-		x ^= x << 5;
-		XOR_STATE = x;
-		x
-	}
+	let mut x = std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().subsec_nanos();
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+	x
 }

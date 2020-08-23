@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::{
 	backend::{GraphicsBackend, RgbaInfo, Vertex},
-	compositor::{prelude::*, surface::SurfaceData},
+	compositor::{prelude::*, surface::SurfaceData}, behavior::Node,
 };
 
 #[derive(Debug)]
@@ -288,7 +288,8 @@ impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 	}
 
 	/// Draw a surface on
-	pub fn draw_surface(&mut self, surface: Resource<WlSurface>) -> Result<(), G::Error> {
+	pub fn draw_node(&mut self, node: &Node) -> Result<(), G::Error> {
+		let surface = node.surface.borrow().clone();
 		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
 		let mut surface_data = surface_data.borrow_mut();
 
@@ -322,28 +323,29 @@ impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 		}
 
 		// If the surface has known geometry and a plane ready for drawing, write the geometry data to the surfaces MVP buffer and draw the surface
-		let surface_geometry_opt = surface_data.try_get_surface_geometry();
-		if let Some(ref mut plane) = surface_data
-			.renderer_data
-			.as_mut()
-			.and_then(|renderer_data| renderer_data.plane.as_mut())
-		{
-			if let Some(surface_geometry) = surface_geometry_opt {
-				for output in self.renderer.outputs.clone() {
-					if let Some(output_local_point) = get_local_coordinates(output.viewport, surface_geometry) {
-						let mut output_local_geometry = surface_geometry;
-						output_local_geometry.x = output_local_point.x;
-						output_local_geometry.y = output_local_point.y;
-						let mvp = self.renderer.create_mvp(output.viewport.size(), output_local_geometry);
-						self.renderer
-							.backend
-							.map_mvp_buffer(plane.mvp_buffer_handle)
-							.map(|mvp_map| *mvp_map = mvp);
-						self.draw(
-							plane.vertex_buffer_handle,
-							plane.texture_handle,
-							plane.mvp_buffer_handle,
-						)?;
+		if node.draw.get() {
+			if let Some(ref mut plane) = surface_data
+				.renderer_data
+				.as_mut()
+				.and_then(|renderer_data| renderer_data.plane.as_mut())
+			{
+				if let Some(surface_geometry) = node.geometry() {
+					for output in self.renderer.outputs.clone() {
+						if let Some(output_local_point) = get_local_coordinates(output.viewport, surface_geometry) {
+							let mut output_local_geometry = surface_geometry;
+							output_local_geometry.x = output_local_point.x;
+							output_local_geometry.y = output_local_point.y;
+							let mvp = self.renderer.create_mvp(output.viewport.size(), output_local_geometry);
+							self.renderer
+								.backend
+								.map_mvp_buffer(plane.mvp_buffer_handle)
+								.map(|mvp_map| *mvp_map = mvp);
+							self.draw(
+								plane.vertex_buffer_handle,
+								plane.texture_handle,
+								plane.mvp_buffer_handle,
+							)?;
+						}
 					}
 				}
 			}

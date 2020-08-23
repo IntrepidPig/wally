@@ -40,16 +40,17 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 	pub fn handle_surface_commit(&mut self, this: Resource<WlSurface>) {
 		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
-		let mut surface_data = surface_data.borrow_mut();
+		let old_size = surface_data.borrow().buffer_size;
+		surface_data.borrow_mut().commit_pending_state();
+		let new_size = surface_data.borrow().buffer_size;
 
-		// TODO: relying on the impl of ShmBuffer to ascertain the size of the buffer is probably unsound if the ShmBuffer impl lies.
-		// So that trait should either be unsafe, or Shm should be moved out of the Rendering backend and EasyShm should be made canonical
-		surface_data.commit_pending_state();
-		if let Some((ref committed_buffer, _point)) = surface_data.committed_buffer {
-			let buffer_data: Ref<BufferData<G>> = committed_buffer.get_user_data();
-			let _new_size = Size::new(buffer_data.buffer.width(), buffer_data.buffer.height());
-
-			log::debug!("TODO: handle surface resize as window manager");
+		if old_size != new_size {
+			match (old_size, new_size) {
+				(Some(_old_size), Some(new_size)) => self.handle_surface_resize(this, new_size),
+				(None, Some(new_size)) => self.handle_surface_map(this, new_size),
+				(Some(_old_size), None) => self.handle_surface_unmap(this),
+				(None, None) => {},
+			};
 		}
 	}
 
@@ -62,6 +63,43 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			|_, _| {},
 		);
 		surface_data.callback = Some(callback);
+	}
+
+	pub fn destroy_surface(&mut self, surface: Resource<WlSurface>) {
+		self.inner.window_manager.remove_surface(surface.clone());
+
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+		let mut surface_data = surface_data.borrow_mut();
+
+		match self.graphics_state.renderer.destroy_surface_renderer_data(surface_data.renderer_data.take().unwrap()) {
+			Ok(()) => {},
+			Err(e) => {
+				log::error!("Failed to destroy surface renderer data: {}", e);
+			},
+		};
+	}
+}
+
+impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
+	pub fn handle_surface_size_set(&mut self, surface: Resource<WlSurface>, old_size: Option<Size>, new_size: Option<Size>) {
+		match (old_size, new_size) {
+			(Some(_old_size), Some(new_size)) => self.handle_surface_resize(surface, new_size),
+			(None, Some(new_size)) => self.handle_surface_map(surface, new_size),
+			(Some(_old_size), None) => self.handle_surface_unmap(surface),
+			(None, None) => {},
+		};
+	}
+
+	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+		self.inner.window_manager.handle_surface_resize(surface, new_size);
+	}
+
+	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+		self.inner.window_manager.handle_surface_map(surface, new_size);
+	}
+
+	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface>) {
+		self.inner.window_manager.handle_surface_unmap(surface);
 	}
 }
 
@@ -95,19 +133,13 @@ pub struct SurfaceData<G: GraphicsBackend> {
 	pub pending_state: PendingState,
 	/// The most recently committed buffer to this surface
 	pub committed_buffer: Option<(Resource<WlBuffer>, Point)>,
-	/// This field is updated whenever a new buffer is committed to avoid re-locking the ShmBuffer mutex
+	/// This field is updated whenever a new buffer is committed
 	pub buffer_size: Option<Size>,
 	pub input_region: Option<Rect>,
 	pub callback: Option<Resource<WlCallback>>,
 	pub role: Option<Role>,
 	/// The data that is necessary for the specific graphics backend to render this surface
 	pub renderer_data: Option<SurfaceRendererData<G>>,
-	/// The current position of this surface in global compositor coordinates. None means the surface
-	/// has no known position and, as such, will not be displayed.
-	pub position: Option<Point>,
-	/// The current size of this surface as dictated by the window manager. None means the surface
-	/// has no known size and, as such, will not be displayed.
-	size: Option<Size>,
 }
 
 impl<G: GraphicsBackend> SurfaceData<G> {
@@ -121,75 +153,13 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 			callback: None,
 			role: None,
 			renderer_data: Some(renderer_data),
-			position: None,
-			size: None,
-		}
-	}
-
-	/// Set the position of the surface in order for the window geometry to be at the given position
-	pub fn set_window_position(&mut self, position: Point) {
-		if let Some(solid_window_geometry) = self.role.as_ref().and_then(|role| role.get_solid_window_geometry()) {
-			self.position = Some(Point::new(
-				position.x - solid_window_geometry.x,
-				position.y - solid_window_geometry.y,
-			));
-		} else {
-			self.position = Some(position)
-		}
-	}
-
-	pub fn resize_window(&self, size: Size) {
-		if let Some(ref role) = self.role {
-			role.request_resize(size);
-		} else {
-			log::warn!("Tried to resize window with no role set");
 		}
 	}
 
 	/// Returns the geometry of the window if both a position and size are set
-	pub fn try_get_window_geometry(&self) -> Option<Rect> {
+	pub fn get_solid_window_geometry(&self) -> Option<Rect> {
 		// woah
-		self.position
-			.and_then(|position| {
-				self.role
-					.as_ref()
-					.and_then(|role| {
-						role.get_solid_window_geometry()
-							.map(|solid_window_geometry| solid_window_geometry.size())
-					})
-					.map(|size| (position, size))
-			})
-			.map(Rect::from)
-	}
-
-	/// Returns the true geometry of the surface if a buffer is committed and the position is set
-	pub fn try_get_surface_geometry(&self) -> Option<Rect> {
-		if let Some(surface_position) = self.try_get_surface_position() {
-			if let Some(buffer_size) = self.buffer_size {
-				Some(Rect::from((surface_position, buffer_size)))
-			} else {
-				None
-			}
-		} else {
-			None
-		}
-	}
-
-	/// Returns the position of this
-	pub fn try_get_surface_position(&self) -> Option<Point> {
-		if let Some(window_position) = self.position {
-			// Offset the window position by the solid window geometry coordinates to get the surface position
-			if let Some(solid_window_geometry) = self.role.as_ref().and_then(|role| role.get_solid_window_geometry()) {
-				Some(Point::new(
-					window_position.x - solid_window_geometry.x,
-					window_position.y - solid_window_geometry.y,
-				))
-			} else {
-				Some(window_position)
-			}
-		} else {
-			None
-		}
+		self.role.as_ref().and_then(|role| role.get_solid_window_geometry())
 	}
 
 	/// Commit all pending state to this surface
@@ -201,16 +171,10 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 					log::error!("Buffer attachments with a specific position are not supported yet");
 				}
 				let committed_buffer_data: Ref<BufferData<G>> = new_buffer.get_user_data();
-				if let Some(role) = self.role.as_mut() {
-					role.set_surface_size(Size::new(
-						committed_buffer_data.buffer.width() as u32,
-						committed_buffer_data.buffer.height() as u32,
-					));
-				}
 				self.buffer_size = Some(Size::new(
 					committed_buffer_data.buffer.width() as u32,
 					committed_buffer_data.buffer.height() as u32,
-				))
+				));
 			} else {
 				self.buffer_size = None;
 			}
