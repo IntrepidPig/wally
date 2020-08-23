@@ -45,6 +45,7 @@ pub mod prelude {
 	};
 }
 
+pub mod subcompositor;
 pub mod compositor;
 pub mod data_device;
 pub mod shm;

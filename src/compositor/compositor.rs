@@ -35,7 +35,6 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 				state.handle_surface_request(this, request);
 			},
 			|state, this| {
-				log::debug!("Running wl_surface destructor");
 				let state = state.get_mut::<Self>();
 				state.destroy_surface(this);
 			},

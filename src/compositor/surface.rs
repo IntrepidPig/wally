@@ -30,7 +30,6 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	}
 
 	pub fn handle_surface_destroy(&mut self, this: Resource<WlSurface>) {
-		log::debug!("wl_surface::destroy request received");
 		this.destroy();
 	}
 
