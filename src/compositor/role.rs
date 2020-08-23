@@ -24,11 +24,11 @@ impl Role {
 		}
 	}
 
-	pub fn resize_window(&mut self, size: Size) {
+	pub fn request_resize(&self, size: Size) {
 		match self {
 			Role::XdgSurface(ref xdg_surface) => {
 				let xdg_surface_data = xdg_surface.get_data::<RefCell<XdgSurfaceData>>().unwrap();
-				xdg_surface_data.borrow_mut().resize_window(size);
+				xdg_surface_data.borrow().request_resize(size);
 				let configure_event = xdg_surface::ConfigureEvent {
 					serial: 42, // TODO: what should this actually be
 				};

@@ -52,7 +52,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 	}
 
 	pub fn handle_shm_pool_destroy(&mut self, _this: Resource<WlShmPool>) {
-		log::error!("Shm pool destruction not implemented");
+		log::warn!("Shm pool destruction not implemented");
 	}
 
 	pub fn handle_shm_pool_create_buffer(&mut self, this: Resource<WlShmPool>, request: wl_shm_pool::CreateBufferRequest) {

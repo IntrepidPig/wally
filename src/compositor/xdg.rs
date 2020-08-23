@@ -36,10 +36,10 @@ impl XdgSurfaceData {
 		}
 	}
 
-	pub fn resize_window(&mut self, size: Size) {
-		self.xdg_surface_role
-			.as_mut()
-			.map(|xdg_surface_role| xdg_surface_role.resize_window(size));
+	pub fn request_resize(&self, size: Size) {
+		if let Some(ref xdg_surface_role) = self.xdg_surface_role {
+			xdg_surface_role.request_resize(size)
+		}
 	}
 }
 
@@ -54,7 +54,7 @@ pub enum XdgSurfaceRole {
 }
 
 impl XdgSurfaceRole {
-	pub fn resize_window(&self, size: Size) {
+	pub fn request_resize(&self, size: Size) {
 		match *self {
 			XdgSurfaceRole::XdgToplevel(ref xdg_toplevel) => {
 				let configure_event = xdg_toplevel::ConfigureEvent {
@@ -112,11 +112,14 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 	}
 
 	pub fn handle_xdg_wm_base_get_xdg_surface(&mut self, _this: Resource<XdgWmBase>, request: xdg_wm_base::GetXdgSurfaceRequest) {
-		let xdg_surface_data = XdgSurfaceData::new(request.surface);
-		request.id.register_fn(xdg_surface_data, |state, this, request| {
+		let xdg_surface_data = XdgSurfaceData::new(request.surface.clone());
+		let xdg_surface = request.id.register_fn(RefCell::new(xdg_surface_data), |state, this, request| {
 			let state = state.get_mut::<Self>();
 			state.handle_xdg_surface_request(this, request);
 		});
+
+		let parent_surface_data = request.surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		parent_surface_data.borrow_mut().role = Some(Role::XdgSurface(xdg_surface));
 	}
 
 	pub fn handle_xdg_surface_request(&mut self, this: Resource<XdgSurface>, request: XdgSurfaceRequest) {
@@ -138,10 +141,12 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 
 		let xdg_surface_data = this.get_data::<RefCell<XdgSurfaceData>>().unwrap();
 		xdg_surface_data.borrow_mut().xdg_surface_role = Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
+
+		self.inner.window_manager.manager_impl.add_surface(xdg_surface_data.borrow().parent.clone());
 		
 		// Send a wl_surface::enter event for every output this surface intersects with. TODO (should this be in the surface module?)
 		let surface_data = xdg_surface_data.borrow();
-		let surface_data = surface_data.parent.get_data::<SurfaceData<G>>().unwrap();
+		let surface_data = surface_data.parent.get_data::<RefCell<SurfaceData<G>>>().unwrap();
 
 		let client = this.client();
 		let client = client.get().unwrap();
@@ -149,7 +154,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 	
 		for output in &client_state.borrow().outputs {
 			let output_data = output.get_data::<Output<G>>().unwrap();
-			if let Some(surface_geometry) = surface_data.try_get_surface_geometry() {
+			if let Some(surface_geometry) = surface_data.borrow().try_get_surface_geometry() {
 				if surface_geometry.intersects(output_data.viewport) {
 					xdg_surface_data.borrow().parent.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
 						output: output.clone(),

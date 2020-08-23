@@ -56,8 +56,7 @@ impl<I: InputBackend, G: GraphicsBackend + 'static> CompositorState<I, G> {
 		// So that trait should either be unsafe, or Shm should be moved out of the Rendering backend and EasyShm should be made canonical
 		surface_data.commit_pending_state();
 		if let Some((ref committed_buffer, _point)) = surface_data.committed_buffer {
-			let buffer_data = committed_buffer.get_data::<RefCell<G::ShmBuffer>>().unwrap();
-			let buffer_data = buffer_data.borrow();
+			let buffer_data = committed_buffer.get_data::<G::ShmBuffer>().unwrap();
 			let _new_size = Size::new(buffer_data.width(), buffer_data.height());
 
 			log::debug!("TODO: handle surface resize as window manager");
@@ -145,17 +144,9 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 		}
 	}
 
-	pub fn resize_window(&mut self, size: Size) {
-		if let Some(ref mut role) = self.role {
-			role.resize_window(size);
-			if let Some(solid_window_geometry) = role.get_solid_window_geometry() {
-				self.size = Some(Size::new(
-					size.width + solid_window_geometry.width * 2,
-					size.height + solid_window_geometry.height * 2,
-				));
-			} else {
-				self.size = Some(size);
-			}
+	pub fn resize_window(&self, size: Size) {
+		if let Some(ref role) = self.role {
+			role.request_resize(size);
 		} else {
 			log::warn!("Tried to resize window with no role set");
 		}
@@ -215,8 +206,7 @@ impl<G: GraphicsBackend + 'static> SurfaceData<G> {
 					// TODO
 					log::error!("Buffer attachments with a specific position are not supported yet");
 				}
-				let committed_buffer_data = new_buffer.get_data::<RefCell<G::ShmBuffer>>().unwrap();
-				let committed_buffer_data = committed_buffer_data.borrow();
+				let committed_buffer_data = new_buffer.get_data::<G::ShmBuffer>().unwrap();
 				if let Some(role) = self.role.as_mut() {
 					role.set_surface_size(Size::new(
 						committed_buffer_data.width() as u32,

@@ -22,7 +22,6 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> CompositorState<I,
 	}
 
 	pub fn handle_surface_create(&mut self, this: Resource<WlCompositor>, request: wl_compositor::CreateSurfaceRequest) {
-		log::trace!("Creating surface");
 		let surface_renderer_data = self.graphics_state.renderer.create_surface_renderer_data().unwrap();
 		let surface_data = RefCell::new(SurfaceData::new(this.client(), surface_renderer_data));
 		request.id.register_fn(surface_data, |state, this, request| {

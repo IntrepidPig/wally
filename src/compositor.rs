@@ -297,7 +297,7 @@ impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 					log::error!("An error occurred in the event loop: {}", e);
 				}
 			}
-			match self.server.dispatch(|_handle| ClientState::new()) {
+			match self.server.dispatch(|_handle| RefCell::new(ClientState::new())) {
 				Ok(()) => {},
 				Err(e) => {
 					log::error!("Error dispatching requests: {}", e);

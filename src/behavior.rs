@@ -107,13 +107,14 @@ impl<G: GraphicsBackend + 'static> DumbWindowManagerBehavior<G> {
 
 impl<G: GraphicsBackend + 'static> WindowManagerBehavior<G> for DumbWindowManagerBehavior<G> {
 	fn add_surface(&mut self, surface: Resource<WlSurface>) {
-		let surface_data = surface.get_data::<RefCell<SurfaceData<G>>>().unwrap();
-		if let Some(ref _role) = surface_data.borrow().role {
+		let surface_clone = surface.clone();
+		let surface_data = surface_clone.get_data::<RefCell<SurfaceData<G>>>().unwrap();
+		if surface_data.borrow().role.is_some() {
 			// TODO: get the position and size from the role... unless you don't want to. it is dumb after all
 			let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
 			let size = Size::new(500, 375);
 			surface_data.borrow_mut().set_window_position(position);
-			surface_data.borrow_mut().resize_window(size);
+			surface_data.borrow().resize_window(size);
 		} else {
 			panic!("Can't add a surface without a role");
 		}

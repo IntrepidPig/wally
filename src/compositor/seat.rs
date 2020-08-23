@@ -6,10 +6,15 @@ use crate::{
 impl<I: InputBackend + 'static, G: GraphicsBackend + 'static> Compositor<I, G> {
 	pub fn setup_seat_global(&mut self) {
 		self.server.register_global(|new: NewResource<WlSeat>| {
-			new.register_fn((), |state, this, request| {
+			let seat = new.register_fn((), |state, this, request| {
 				let state = state.get_mut::<CompositorState<I, G>>();
 				state.handle_seat_request(this, request);
 			});
+
+			let capabilities_event = wl_seat::CapabilitiesEvent {
+				capabilities: wl_seat::Capability::POINTER | wl_seat::Capability::KEYBOARD,
+			};
+			seat.send_event(WlSeatEvent::Capabilities(capabilities_event));
 		});
 	}
 }
