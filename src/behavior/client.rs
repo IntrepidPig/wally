@@ -6,6 +6,7 @@ use crate::{
 	compositor::prelude::*,
 };
 
+#[derive(Debug)]
 pub struct ClientState {
 	pub(crate) keyboards: Vec<Resource<WlKeyboard>>,
 	pub(crate) pointers: Vec<Resource<WlPointer>>,

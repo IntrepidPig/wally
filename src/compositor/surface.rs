@@ -57,12 +57,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let new_size = surface_data.borrow().buffer_size;
 
 		if old_size != new_size {
-			match (old_size, new_size) {
-				(Some(_old_size), Some(new_size)) => self.handle_surface_resize(this, new_size),
-				(None, Some(new_size)) => self.handle_surface_map(this, new_size),
-				(Some(_old_size), None) => self.handle_surface_unmap(this),
-				(None, None) => {},
-			};
+			self.handle_surface_size_set(this, old_size, new_size);
 		}
 	}
 
@@ -76,6 +71,9 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		);
 		
 		if let Some(old_callback) = surface_data.callback.replace(callback) {
+			old_callback.send_event(WlCallbackEvent::Done(wl_callback::DoneEvent {
+				callback_data: get_time_ms(),
+			}));
 			old_callback.destroy();
 		}
 	}
@@ -106,11 +104,14 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_surface_size_set(&mut self, surface: Resource<WlSurface>, old_size: Option<Size>, new_size: Option<Size>) {
 		match (old_size, new_size) {
-			(Some(_old_size), Some(new_size)) => self.handle_surface_resize(surface, new_size),
-			(None, Some(new_size)) => self.handle_surface_map(surface, new_size),
-			(Some(_old_size), None) => self.handle_surface_unmap(surface),
+			(Some(_old_size), Some(new_size)) => self.handle_surface_resize(surface.clone(), new_size),
+			(None, Some(new_size)) => self.handle_surface_map(surface.clone(), new_size),
+			(Some(_old_size), None) => self.handle_surface_unmap(surface.clone()),
 			(None, None) => {},
 		};
+
+		// TODO: this also has to happen on a surface position change
+		self.update_surface_outputs(surface);
 	}
 
 	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, new_size: Size) {
@@ -123,6 +124,26 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface>) {
 		self.inner.window_manager.handle_surface_unmap(surface);
+	}
+
+	pub fn update_surface_outputs(&mut self, surface: Resource<WlSurface>) {
+		// TODO: add support for exits
+		let client = surface.client();
+		let client = client.get().unwrap();
+		let client_state = client.state::<RefCell<ClientState>>();
+
+		let node = self.inner.window_manager.tree.find(|node| node.surface.borrow().is(&surface));
+		
+		for output in &client_state.borrow().outputs {
+			let output_data: Ref<OutputData<G>> = output.get_user_data();
+			if let Some(node_geometry) = node.as_ref().and_then(|node| node.geometry()) {
+				if node_geometry.intersects(output_data.output.viewport) {
+					surface.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
+						output: output.clone(),
+					}));
+				}
+			}
+		}
 	}
 }
 

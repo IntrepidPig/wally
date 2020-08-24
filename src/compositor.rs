@@ -5,6 +5,9 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use once_cell::{
+	sync::{Lazy},
+};
 use calloop::{
 	signals::{Signal, Signals},
 	EventLoop, LoopHandle, Source,
@@ -35,7 +38,7 @@ pub mod prelude {
 			input::{KeyboardState},
 		},
 		compositor::{
-			get_input_serial,
+			get_input_serial, get_time_ms,
 			Compositor, UserDataAccess,
 			surface::{Role, SurfaceData},
 			output::{OutputData},
@@ -59,6 +62,7 @@ pub mod xdg;
 
 pub(crate) static INPUT_SERIAL: AtomicU32 = AtomicU32::new(1);
 pub(crate) static PROFILE_OUTPUT: AtomicBool = AtomicBool::new(false);
+pub(crate) static START_TIME: Lazy<Instant> = Lazy::new(|| Instant::now());
 pub(crate) static DEBUG_OUTPUT: AtomicBool = AtomicBool::new(false);
 
 pub fn get_input_serial() -> u32 {
@@ -67,6 +71,11 @@ pub fn get_input_serial() -> u32 {
 
 pub fn profile_output() -> bool {
 	PROFILE_OUTPUT.load(Ordering::Relaxed)
+}
+
+pub fn get_time_ms() -> u32 {
+	let elapsed = START_TIME.elapsed();
+	((elapsed.as_secs() % std::u32::MAX as u64) as u32).wrapping_add(elapsed.subsec_nanos())
 }
 
 pub fn debug_output() -> bool {

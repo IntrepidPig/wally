@@ -1,5 +1,6 @@
 use std::{
 	marker::{PhantomData},
+	time::{Instant},
 };
 
 use loaner::Handle;
@@ -56,6 +57,7 @@ impl<G: GraphicsBackend> GraphicsBackendState<G> {
 #[derive(Debug)]
 pub struct CompositorInner<I: InputBackend, G: GraphicsBackend> {
 	pub running: bool,
+	pub start_time: Instant,
 	pub window_manager: WindowManager<G>,
 	pub pointer: PointerState,
 	pub pointer_focus: Option<Resource<WlSurface>>,
@@ -69,6 +71,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorInner<I, G> {
 	pub fn new() -> Self {
 		Self {
 			running: true,
+			start_time: Instant::now(),
 			window_manager: WindowManager::new(),
 			pointer: PointerState::new(),
 			pointer_focus: None,

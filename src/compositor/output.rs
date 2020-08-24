@@ -40,7 +40,7 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 					flags: wl_output::Mode::CURRENT | wl_output::Mode::PREFERRED,
 					width: output.viewport.width as i32,
 					height: output.viewport.height as i32,
-					refresh: 75,
+					refresh: 75000,
 				};
 				let scale_event = wl_output::ScaleEvent {
 					factor: 1,

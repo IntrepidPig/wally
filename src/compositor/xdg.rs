@@ -56,12 +56,28 @@ impl fmt::Debug for XdgSurfaceRole {
 
 #[derive(Debug, Clone)]
 pub struct XdgToplevelData {
+	pub parent: Resource<XdgSurface>,
 	pub title: Option<String>,
+	states: Vec<xdg_toplevel::State>,
 }
 
 impl XdgToplevelData {
-	pub fn new() -> Self {
-		Self { title: None }
+	pub fn new(parent: Resource<XdgSurface>) -> Self {
+		Self {
+			parent,
+			title: None,
+			states: Vec::new(),
+		}
+	}
+
+	fn set_state(&mut self, state: xdg_toplevel::State) {
+		if !self.states.contains(&state) {
+			self.states.push(state);
+		}
+	}
+
+	fn unset_state(&mut self, state: xdg_toplevel::State) {
+		self.states.retain(|test_state| *test_state != state);
 	}
 }
 
@@ -123,7 +139,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	}
 
 	pub fn handle_xdg_surface_get_toplevel(&mut self, this: Resource<XdgSurface>, request: xdg_surface::GetToplevelRequest) {
-		let xdg_toplevel_data = XdgToplevelData::new();
+		let xdg_toplevel_data = XdgToplevelData::new(this.clone());
 		let xdg_toplevel = request.id.register_fn(
 			RefCell::new(xdg_toplevel_data),
 			|state, this, request| {
@@ -135,32 +151,13 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			},
 		);
 
-		// Set the role of the parent XdgSurface
 		let xdg_surface_data: Ref<RefCell<XdgSurfaceData>> = this.get_user_data();
 		xdg_surface_data.borrow_mut().xdg_surface_role = Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
 
-		self.request_xdg_surface_configure(this.clone(), Size::new(0, 0));
+		self.focus_surface_keyboard(xdg_surface_data.borrow().parent.clone());
+		self.set_surface_active(xdg_surface_data.borrow().parent.clone());
 
 		self.inner.window_manager.add_surface(xdg_surface_data.borrow().parent.clone());
-
-		let client = this.client();
-		let client = client.get().unwrap();
-		let client_state = client.state::<RefCell<ClientState>>();
-
-		let xdg_surface_data = xdg_surface_data.borrow();
-		let node = self.inner.window_manager.tree.find(|node| node.surface.borrow().is(&xdg_surface_data.parent));
-
-		// TODO: this should be moved to a generalized place (e.g. handle_surface/node_geometry_change)
-		for output in &client_state.borrow().outputs {
-			let output_data: Ref<OutputData<G>> = output.get_user_data();
-			if let Some(node_geometry) = node.as_ref().and_then(|node| node.geometry()) {
-				if node_geometry.intersects(output_data.output.viewport) {
-					xdg_surface_data.parent.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
-						output: output.clone(),
-					}));
-				}
-			}
-		}
 	}
 
 	pub fn handle_xdg_surface_set_window_geometry(&mut self, this: Resource<XdgSurface>, request: xdg_surface::SetWindowGeometryRequest) {
@@ -194,27 +191,59 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		this.get_user_data().borrow_mut().title = Some(title);
 	}
 
-	pub fn request_xdg_surface_configure(&mut self, this: Resource<XdgSurface>, size: Size) {
-		let xdg_surface_data = this.get_user_data();
-		let xdg_surface_data = xdg_surface_data.borrow();
-		if let Some(ref role) = xdg_surface_data.xdg_surface_role {
-			match *role {
-				XdgSurfaceRole::XdgToplevel(ref xdg_toplevel) => self.request_xdg_toplevel_configure(xdg_toplevel.clone(), size),
+	pub fn set_xdg_surface_active(&mut self, xdg_surface: Resource<XdgSurface>) {
+		let xdg_surface_data = xdg_surface.get_user_data();
+		let xdg_surface_role = xdg_surface_data.borrow().xdg_surface_role.clone();
+		if let Some(role) = xdg_surface_role {
+			match role {
+				XdgSurfaceRole::XdgToplevel(xdg_toplevel) => self.set_xdg_toplevel_active(xdg_toplevel),
 			}
 		}
+	}
+
+	pub fn unset_xdg_surface_active(&mut self, xdg_surface: Resource<XdgSurface>) {
+		let xdg_surface_data = xdg_surface.get_user_data();
+		let xdg_surface_role = xdg_surface_data.borrow().xdg_surface_role.clone();
+		if let Some(role) = xdg_surface_role {
+			match role {
+				XdgSurfaceRole::XdgToplevel(xdg_toplevel) => self.unset_xdg_toplevel_active(xdg_toplevel),
+			}
+		}
+	}
+
+	pub fn set_xdg_toplevel_active(&mut self, xdg_toplevel: Resource<XdgToplevel>) {
+		let xdg_toplevel_data = xdg_toplevel.get_user_data();
+		xdg_toplevel_data.borrow_mut().set_state(xdg_toplevel::State::Activated);
+		self.request_xdg_toplevel_configure(xdg_toplevel.clone(), None, None);
+	}
+
+	pub fn unset_xdg_toplevel_active(&mut self, xdg_toplevel: Resource<XdgToplevel>) {
+		let xdg_toplevel_data = xdg_toplevel.get_user_data();
+		xdg_toplevel_data.borrow_mut().unset_state(xdg_toplevel::State::Activated);
+		self.request_xdg_toplevel_configure(xdg_toplevel.clone(), None, None);
+	}
+
+	pub fn finish_xdg_surface_configure(&mut self, this: Resource<XdgSurface>) {
 		let configure_event = xdg_surface::ConfigureEvent {
 			serial: get_input_serial(),
 		};
 		this.send_event(XdgSurfaceEvent::Configure(configure_event));
 	}
 
-	pub fn request_xdg_toplevel_configure(&mut self, this: Resource<XdgToplevel>, size: Size) {
+	pub fn request_xdg_toplevel_configure(&mut self, this: Resource<XdgToplevel>, size: Option<Size>, states: Option<&[xdg_toplevel::State]>) {
+		let xdg_toplevel_data: Ref<RefCell<XdgToplevelData>> = this.get_user_data();
+		let xdg_toplevel_data = xdg_toplevel_data.borrow();
+		let size = size.unwrap_or(Size::new(0, 0));
+		let states = states.unwrap_or_else(|| &xdg_toplevel_data.states);
+
+		let states = states.iter().map(|state| *state as u8).collect();
 		let configure_event = xdg_toplevel::ConfigureEvent {
 			width: size.width as i32,
 			height: size.height as i32,
-			states: Vec::new(), // TODO: investigate
+			states,
 		};
 		this.send_event(XdgToplevelEvent::Configure(configure_event));
+		self.finish_xdg_surface_configure(xdg_toplevel_data.parent.clone());
 	}
 }
 

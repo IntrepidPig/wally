@@ -356,7 +356,7 @@ impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 
 		if let Some(callback) = surface_data.callback.take() {
 			let done_event = wl_callback::DoneEvent {
-				callback_data: crate::compositor::get_input_serial(),
+				callback_data: crate::compositor::get_time_ms(),
 			};
 			callback.send_event(WlCallbackEvent::Done(done_event));
 			callback.destroy();

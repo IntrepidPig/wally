@@ -48,6 +48,9 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			},
 		);
 
+		// TODO: if the pointer is over a surface, send a pointer enter event here.
+		// not critical because the event will get sent as soon as the pointer moves
+
 		let client = this.client();
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState>>();
@@ -85,6 +88,16 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		};
 		keyboard.send_event(WlKeyboardEvent::Keymap(keymap_event));
 
+		if let Some(ref keyboard_focus) = self.inner.keyboard_focus {
+			self.send_keyboard_modifiers(keyboard.clone());
+			let enter_event = wl_keyboard::EnterEvent {
+				serial: get_input_serial(),
+				surface: keyboard_focus.clone(),
+				keys: Vec::new(), // TODO: actual value
+			};
+			keyboard.send_event(WlKeyboardEvent::Enter(enter_event));
+		}
+
 		let client = this.client();
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState>>();
@@ -100,5 +113,17 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_keyboard_release(&mut self, this: Resource<WlKeyboard>) {
 		this.client().get().unwrap().state::<RefCell<ClientState>>().borrow_mut().keyboards.retain(|pointer| !pointer.is(&this));
 		this.destroy();
+	}
+
+	pub fn send_keyboard_modifiers(&self, keyboard: Resource<WlKeyboard>) {
+		let mods = self.inner.keyboard_state.xkb_modifiers_state;
+		let modifiers_event = wl_keyboard::ModifiersEvent {
+			serial: get_input_serial(),
+			mods_depressed: mods.mods_depressed,
+			mods_latched: mods.mods_latched,
+			mods_locked: mods.mods_locked,
+			group: mods.group,
+		};
+		keyboard.send_event(WlKeyboardEvent::Modifiers(modifiers_event));
 	}
 }

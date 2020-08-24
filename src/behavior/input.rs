@@ -123,15 +123,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 			for keyboard in &client_state.keyboards {
 				if state_change {
-					let mods = self.inner.keyboard_state.xkb_modifiers_state;
-					let modifiers_event = wl_keyboard::ModifiersEvent {
-						serial: key_press.serial,
-						mods_depressed: mods.mods_depressed,
-						mods_latched: mods.mods_latched,
-						mods_locked: mods.mods_locked,
-						group: mods.group,
-					};
-					keyboard.send_event(WlKeyboardEvent::Modifiers(modifiers_event));
+					self.send_keyboard_modifiers(keyboard.clone());
 				}
 				let key_event = wl_keyboard::KeyEvent {
 					serial: key_press.serial,
@@ -153,10 +145,9 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 		if let Some(node) = self.inner.window_manager.get_window_under_point(pointer_pos) {
 			let surface = node.surface.borrow().clone();
-			let client = surface.client();
-			let client = client.get().unwrap();
-			let client_state = client.state::<RefCell<ClientState>>();
 
+			// TODO!: Node::geometry will probably be changed to provide the window geometry instead of the
+			// surface geometry, so this will have to handle that.
 			let surface_relative_coords =
 				if let Some(geometry) = node.geometry() {
 					Point::new(pointer_pos.x - geometry.x, pointer_pos.y - geometry.y)
@@ -167,42 +158,20 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 				};
 
 			if let Some(old_pointer_focus) = self.inner.pointer_focus.clone() {
-				let old_surface_client = old_pointer_focus.client();
-				let old_surface_client = old_surface_client.get().unwrap();
-				let old_surface_client_state = old_surface_client.state::<RefCell<ClientState>>();
-
-				if old_pointer_focus.is(&surface) {
-					// The pointer is over the same surface as it was previously, do not send any focus events
-				} else {
+				if !old_pointer_focus.is(&surface) {
 					// The pointer is over a different surface, unfocus the old one and focus the new one
-					for pointer in &old_surface_client_state.borrow().pointers {
-						pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
-							serial: get_input_serial(),
-							surface: old_pointer_focus.clone(),
-						}));
-					}
-					for pointer in &client_state.borrow().pointers {
-						pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
-							serial: get_input_serial(),
-							surface: surface.clone(),
-							surface_x: (surface_relative_coords.x as f64).into(),
-							surface_y: (surface_relative_coords.y as f64).into(),
-						}));
-					}
-					self.inner.pointer_focus = Some(surface.clone())
+					self.unfocus_surface_pointer(old_pointer_focus.clone());
+					self.focus_surface_pointer(surface.clone(), surface_relative_coords);
 				}
 			} else {
 				// The pointer has entered a surface while no other surface is focused, focus this surface
-				for pointer in &client_state.borrow().pointers {
-					pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
-						serial: get_input_serial(),
-						surface: surface.clone(),
-						surface_x: (surface_relative_coords.x as f64).into(),
-						surface_y: (surface_relative_coords.y as f64).into(),
-					}));
-				}
-				self.inner.pointer_focus = Some(surface.clone());
+				self.focus_surface_pointer(surface.clone(), surface_relative_coords);
 			}
+
+
+			let client = surface.client();
+			let client = client.get().unwrap();
+			let client_state = client.state::<RefCell<ClientState>>();
 
 			// Send the surface the actual motion event
 			for pointer in &client_state.borrow().pointers {
@@ -215,16 +184,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		} else {
 			// The pointer is not over any surface, remove pointer focus from the previous focused surface if any
 			if let Some(old_pointer_focus) = self.inner.pointer_focus.take() {
-				let client = old_pointer_focus.client();
-				let client = client.get().unwrap();
-				let client_state = client.state::<RefCell<ClientState>>();
-
-				for pointer in &client_state.borrow().pointers {
-					pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
-						serial: get_input_serial(),
-						surface: old_pointer_focus.clone(),
-					}));
-				}
+				self.unfocus_surface_pointer(old_pointer_focus);
 			}
 		}
 	}
@@ -235,80 +195,22 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 		if let Some(node) = self.inner.window_manager.get_window_under_point(pointer_pos) {
 			let surface = node.surface.borrow().clone();
-			let client = surface.client();
-			let client = client.get().unwrap();
-			let client_state = client.state::<RefCell<ClientState>>();
-
-			if pointer_button.state == PressState::Press {
-				if let Some(old_keyboard_focus) = self.inner.keyboard_focus.clone() {
-					if old_keyboard_focus.is(&surface) {
-						// No focus change, this is the same surface
-					} else {
-						// Change the keyboard focus
-						let old_surface_client = old_keyboard_focus.client();
-						let old_surface_client = old_surface_client.get().unwrap();
-						let old_surface_client_state = old_surface_client.state::<RefCell<ClientState>>();
-
-						for keyboard in &old_surface_client_state.borrow().keyboards {
-							keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
-								serial: get_input_serial(),
-								surface: old_keyboard_focus.clone(),
-							}));
-						}
-						for keyboard in &client_state.borrow().keyboards {
-							let mods = self.inner.keyboard_state.xkb_modifiers_state;
-							let modifiers_event = wl_keyboard::ModifiersEvent {
-								serial: get_input_serial(),
-								mods_depressed: mods.mods_depressed,
-								mods_latched: mods.mods_latched,
-								mods_locked: mods.mods_locked,
-								group: mods.group,
-							};
-							let enter_event = wl_keyboard::EnterEvent {
-								serial: get_input_serial(),
-								surface: surface.clone(),
-								keys: Vec::new(), // TODO: actual value
-							};
-							keyboard.send_event(WlKeyboardEvent::Modifiers(modifiers_event));
-							keyboard.send_event(WlKeyboardEvent::Enter(enter_event));
-						}
-						self.inner.keyboard_focus = Some(surface.clone());
-					}
-				} else {
-					// Focus the keyboard on a window when there was no previously focused window
-					for keyboard in &client_state.borrow().keyboards {
-						let mods = self.inner.keyboard_state.xkb_modifiers_state;
-						let modifiers_event = wl_keyboard::ModifiersEvent {
-							serial: get_input_serial(),
-							mods_depressed: mods.mods_depressed,
-							mods_latched: mods.mods_latched,
-							mods_locked: mods.mods_locked,
-							group: mods.group,
-						};
-						let enter_event = wl_keyboard::EnterEvent {
-							serial: get_input_serial(),
-							surface: surface.clone(),
-							keys: Vec::new(), // TODO: actual value
-						};
-						keyboard.send_event(WlKeyboardEvent::Modifiers(modifiers_event));
-						keyboard.send_event(WlKeyboardEvent::Enter(enter_event));
-					}
-					self.inner.keyboard_focus = Some(surface.clone());
+			if let Some(old_keyboard_focus) = self.inner.keyboard_focus.clone() {
+				if !old_keyboard_focus.is(&surface) {
+					self.unfocus_surface_keyboard(surface.clone());
+					self.focus_surface_keyboard(surface.clone());
+					self.unset_surface_active(surface.clone());
+					self.set_surface_active(surface);
 				}
+			} else {
+				self.focus_surface_keyboard(surface.clone());
+				self.set_surface_active(surface)
 			}
 		} else {
 			// Remove the keyboard focus from the current focus if empty space is clicked
 			if let Some(old_keyboard_focus) = self.inner.keyboard_focus.take() {
-				let old_surface_client = old_keyboard_focus.client();
-				let old_surface_client = old_surface_client.get().unwrap();
-				let old_surface_client_state = old_surface_client.state::<RefCell<ClientState>>();
-
-				for keyboard in &old_surface_client_state.borrow().keyboards {
-					keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
-						serial: get_input_serial(),
-						surface: old_keyboard_focus.clone(),
-					}));
-				}
+				self.unfocus_surface_keyboard(old_keyboard_focus.clone());
+				self.unset_surface_active(old_keyboard_focus);
 			}
 		}
 
