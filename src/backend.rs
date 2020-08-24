@@ -1,7 +1,7 @@
-pub use std::os::raw::c_void;
-pub use std::os::unix::io::{AsRawFd, RawFd};
-
-use std::{error::Error as StdError, fmt};
+use std::{
+	os::unix::io::{RawFd},
+	error::Error as StdError, fmt
+};
 
 use wl_server::{
 	protocol::*,
