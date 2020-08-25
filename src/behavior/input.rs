@@ -146,11 +146,12 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		if let Some(node) = self.inner.window_manager.get_window_under_point(pointer_pos) {
 			let surface = node.surface.borrow().clone();
 
-			// TODO!: Node::geometry will probably be changed to provide the window geometry instead of the
-			// surface geometry, so this will have to handle that.
 			let surface_relative_coords =
-				if let Some(geometry) = node.geometry() {
-					Point::new(pointer_pos.x - geometry.x, pointer_pos.y - geometry.y)
+				if let Some(geometry) = node.node_surface_geometry() {
+					let node_surface_relative_coords = Point::new(pointer_pos.x - geometry.x, pointer_pos.y - geometry.y);
+					// This unwrap is fine because Node::node_surface_geometry just returned Some, so this will definitely return Some
+					let surface_relative_coords = node.node_surface_point_to_surface_point(node_surface_relative_coords).unwrap();
+					surface_relative_coords
 				} else {
 					// This should probably not happen because the window manager just told us the pointer is
 					// over this window, implying it has geometry

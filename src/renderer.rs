@@ -291,7 +291,9 @@ impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 	}
 
 	/// Draw a surface on
-	pub fn draw_node(&mut self, node: &Node) -> Result<(), G::Error> {
+	pub fn draw_node(&mut self, node: &Node<G>) -> Result<(), G::Error> {
+		let node_surface_geometry = node.node_surface_geometry();
+
 		let surface = node.surface.borrow().clone();
 		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
 		let mut surface_data = surface_data.borrow_mut();
@@ -332,7 +334,7 @@ impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 				.as_mut()
 				.and_then(|renderer_data| renderer_data.plane.as_mut())
 			{
-				if let Some(surface_geometry) = node.geometry() {
+				if let Some(surface_geometry) = node_surface_geometry {
 					for output in self.renderer.outputs.clone() {
 						if let Some(output_local_point) = get_local_coordinates(output.viewport, surface_geometry) {
 							let mut output_local_geometry = surface_geometry;

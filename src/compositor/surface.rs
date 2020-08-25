@@ -117,7 +117,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, new_size: Size) {
 		self.inner.window_manager.handle_surface_resize(surface, new_size);
 	}
-
+	
 	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface>, new_size: Size) {
 		self.inner.window_manager.handle_surface_map(surface, new_size);
 	}
@@ -136,8 +136,8 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		
 		for output in &client_state.borrow().outputs {
 			let output_data: Ref<OutputData<G>> = output.get_user_data();
-			if let Some(node_geometry) = node.as_ref().and_then(|node| node.geometry()) {
-				if node_geometry.intersects(output_data.output.viewport) {
+			if let Some(geometry) = node.as_ref().and_then(|node| node.node_surface_geometry()) {
+				if geometry.intersects(output_data.output.viewport) {
 					surface.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
 						output: output.clone(),
 					}));
@@ -200,9 +200,11 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 		}
 	}
 
-	/// Returns the geometry of the window if both a position and size are set
+	pub fn get_surface_size(&self) -> Option<Size> {
+		self.buffer_size
+	}
+
 	pub fn get_solid_window_geometry(&self) -> Option<Rect> {
-		// woah
 		self.role.as_ref().and_then(|role| role.get_solid_window_geometry())
 	}
 
@@ -229,6 +231,9 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 		}
 		if let Some(new_input_region) = self.pending_state.input_region.take() {
 			self.input_region = Some(new_input_region);
+		}
+		if let Some(ref mut role) = self.role {
+			role.commit_pending_state();
 		}
 	}
 

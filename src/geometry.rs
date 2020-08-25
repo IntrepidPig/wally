@@ -58,6 +58,7 @@ impl Rect {
 	pub fn point(self) -> Point {
 		Point { x: self.x, y: self.y }
 	}
+
 	pub fn size(self) -> Size {
 		Size {
 			width: self.width,

@@ -100,9 +100,9 @@ impl<G: GraphicsBackend> WindowManager<G> {
 		}
 	}
 
-	pub fn add_surface(&mut self, surface: Resource<WlSurface>) -> Handle<Node> {
+	pub fn add_surface(&mut self, surface: Resource<WlSurface>) -> Handle<Node<G>> {
 		let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
-		self.tree.add_surface(surface, position)
+		self.tree.add_window(surface, position)
 	}
 
 	pub fn remove_surface(&mut self, surface: Resource<WlSurface>) {
@@ -115,14 +115,18 @@ impl<G: GraphicsBackend> WindowManager<G> {
 	}
 
 	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+		let window_size = surface_data.borrow().get_solid_window_geometry().map(|geometry| geometry.size()).unwrap_or(new_size);
 		if let Some(node) = self.tree.find_surface(&surface) {
-			node.size.set(Some(new_size));
+			node.size.set(Some(window_size));
 		}
 	}
 
 	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+		let window_size = surface_data.borrow().get_solid_window_geometry().map(|geometry| geometry.size()).unwrap_or(new_size);
 		if let Some(node) = self.tree.find_surface(&surface) {
-			node.size.set(Some(new_size));
+			node.size.set(Some(window_size));
 			node.draw.set(true);
 		}
 	}
@@ -133,18 +137,18 @@ impl<G: GraphicsBackend> WindowManager<G> {
 		}
 	}
 
-	pub fn get_surface_under_point(&self, point: Point) -> Option<Ref<Node>> {
+	pub fn get_surface_under_point(&self, point: Point) -> Option<Ref<Node<G>>> {
 		self.tree.get_surface_under_point(point)
 	}
 
-	pub fn get_window_under_point(&self, point: Point) -> Option<Ref<Node>> {
+	pub fn get_window_under_point(&self, point: Point) -> Option<Ref<Node<G>>> {
 		self.tree.get_window_under_point(point)
 	}
 }
 
 #[derive(Debug)]
 pub struct SurfaceTree<G: GraphicsBackend + ?Sized> {
-	pub(crate) nodes: Vec<Owner<Node>>,
+	pub(crate) nodes: Vec<Owner<Node<G>>>,
 	phantom: PhantomData<G>,
 }
 
@@ -156,11 +160,16 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		}
 	}
 
-	pub fn add_surface(&mut self, surface: Resource<WlSurface>, position: Point) -> Handle<Node> {
+	pub fn add_window(&mut self, surface: Resource<WlSurface>, mut position: Point) -> Handle<Node<G>> {
 		// TODO: ensure surface isn't already added
 		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let surface_size = surface_data.borrow().buffer_size;
-		let node = Owner::new(Node::new(surface, position, surface_size, true));
+		let mut size = surface_data.borrow().buffer_size;
+		if let Some(window_geometry) = surface_data.borrow().get_solid_window_geometry() {
+			position.x += window_geometry.x;
+			position.y += window_geometry.y;
+			size = Some(window_geometry.size());
+		}
+		let node = Owner::new(Node::new(surface, position, size, true));
 		let handle = node.handle();
 		self.nodes.push(node);
 		handle
@@ -178,9 +187,9 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		}
 	}
 
-	fn get_surface_under_point(&self, point: Point) -> Option<Ref<Node>> {
+	fn get_surface_under_point(&self, point: Point) -> Option<Ref<Node<G>>> {
 		for node in self.nodes_descending() {
-			if let Some(geometry) = node.geometry() {
+			if let Some(geometry) = node.node_surface_geometry() {
 				if geometry.contains_point(point) {
 					return Some(node.clone())
 				}
@@ -189,16 +198,9 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		None
 	}
 
-	fn get_window_under_point(&self, point: Point) -> Option<Ref<Node>> {
+	fn get_window_under_point(&self, point: Point) -> Option<Ref<Node<G>>> {
 		for node in self.nodes_descending() {
-			if let Some(mut geometry) = node.geometry() {
-				let surface = node.surface.borrow();
-				let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-				if let Some(mut window_geometry) = surface_data.borrow().get_solid_window_geometry() {
-					window_geometry.x += point.x;
-					window_geometry.y += point.y;
-					geometry = window_geometry;
-				};
+			if let Some(geometry) = node.node_geometry() {
 				if geometry.contains_point(point) {
 					return Some(node.clone())
 				}
@@ -208,33 +210,34 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		None
 	}
 
-	pub fn find<F: Fn(&Owner<Node>) -> bool>(&self, f: F) -> Option<Ref<Node>> {
+	pub fn find<F: Fn(&Owner<Node<G>>) -> bool>(&self, f: F) -> Option<Ref<Node<G>>> {
 		self.nodes.iter().find(|node| f(node)).map(|node| node.custom_ref())
 	}
 
-	pub fn find_surface(&self, surface: &Resource<WlSurface>) -> Option<Ref<Node>> {
+	pub fn find_surface(&self, surface: &Resource<WlSurface>) -> Option<Ref<Node<G>>> {
 		self.find(|node| node.surface.borrow().is(surface))
 	}
 
-	pub fn nodes_ascending(&self) -> impl Iterator<Item = Ref<Node>> {
+	pub fn nodes_ascending(&self) -> impl Iterator<Item = Ref<Node<G>>> {
 		self.nodes.iter().map(|node| node.custom_ref())
 	}
 
-	pub fn nodes_descending(&self) -> impl Iterator<Item = Ref<Node>> {
+	pub fn nodes_descending(&self) -> impl Iterator<Item = Ref<Node<G>>> {
 		self.nodes.iter().rev().map(|node| node.custom_ref())
 	}
 }
 
 #[derive(Debug, Clone)]
-pub struct Node {
+pub struct Node<G: GraphicsBackend> {
 	pub surface: RefCell<Resource<WlSurface>>,
 	pub position: Cell<Point>,
 	pub size: Cell<Option<Size>>,
 	pub draw: Cell<bool>,
 	pub focused: Cell<bool>,
+	_phantom: PhantomData<G>,
 }
 
-impl Node {
+impl<G: GraphicsBackend> Node<G> {
 	pub fn new(surface: Resource<WlSurface>, position: Point, size: Option<Size>, draw: bool) -> Self {
 		Self {
 			surface: RefCell::new(surface),
@@ -242,12 +245,87 @@ impl Node {
 			size: Cell::new(size),
 			draw: Cell::new(draw),
 			focused: Cell::new(false),
+			_phantom: PhantomData,
 		}
 	}
 
-	pub fn geometry(&self) -> Option<Rect> {
+	pub fn node_position(&self) -> Point {
+		self.position.get()
+	}
+
+	pub fn node_geometry(&self) -> Option<Rect> {
 		self.size.get().map(|size| Rect::from(self.position.get(), size))
 	}
+
+	pub fn node_size(&self) -> Option<Size> {
+		self.size.get()
+	}
+
+	/// Returns the geometry of this node's surface scaled to match the surface window to the node.
+	/// Returns none if the node or the surface has no size.
+	pub fn node_surface_geometry(&self) -> Option<Rect> {
+		let surface = self.surface.borrow();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+		let surface_data = surface_data.borrow();
+		let surface_window_geometry = surface_data.get_solid_window_geometry();
+		match (self.node_geometry(), surface_data.get_surface_size()) {
+			(Some(node_geometry), Some(surface_size)) => {
+				let surface_window_geometry = surface_window_geometry.unwrap_or(Rect::new(0, 0, surface_size.width, surface_size.height));
+				let (node_surface_x, node_surface_width) = calc_outer_bounds(
+					node_geometry.x as f32,
+					node_geometry.width as f32,
+					surface_window_geometry.x as f32,
+					surface_window_geometry.width as f32,
+					surface_size.width as f32,
+				);
+				let (node_surface_x, node_surface_width) = (node_surface_x.round() as i32, node_surface_width.round() as u32);
+				let (node_surface_y, node_surface_height) = calc_outer_bounds(
+					node_geometry.y as f32,
+					node_geometry.height as f32,
+					surface_window_geometry.y as f32,
+					surface_window_geometry.height as f32,
+					surface_size.height as f32,
+				);
+				let (node_surface_y, node_surface_height) = (node_surface_y.round() as i32, node_surface_height.round() as u32);
+				Some(Rect::new(node_surface_x, node_surface_y, node_surface_width, node_surface_height))
+			}
+			_ => None,
+		}
+	}
+
+	/// Translate a point from node-surface coordinates to surface coordinates.
+	/// Returns none if the node or the surface has no size.
+	pub fn node_surface_point_to_surface_point(&self, node_point: Point) -> Option<Point> {
+		let surface = self.surface.borrow();
+		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
+		let surface_data = surface_data.borrow();
+		match (self.node_surface_geometry(), surface_data.get_surface_size()) {
+			(Some(node_surface_geometry), Some(surface_size)) => {
+				let cx = surface_size.width as f32 / node_surface_geometry.width as f32;
+				let cy = surface_size.height as f32 / node_surface_geometry.height as f32;
+				Some(node_point.scale(cx, cy))
+			},
+			_ => None,
+		}
+	}
+}
+
+// Calculates the surface size and position of a node by by scaling the actual surface size by
+// the ratio of the surface size to the node size and 
+// ## Parameters
+// nq: node coordinate
+// nv: node size
+// wq: window coordinate
+// wv: window size
+// sv: surface size
+// ## Returns
+// nsq: node surface coordinate
+// nsv: node surface size
+fn calc_outer_bounds(nq: f32, nv: f32, wq: f32, wv: f32, sv: f32) -> (f32, f32) {
+	let c = nv / wv;
+	let nsq = nq - wq * c;
+	let nsv = sv * c;
+	(nsq, nsv)
 }
 
 fn dumb_rand() -> u32 {
