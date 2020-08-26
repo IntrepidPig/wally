@@ -18,16 +18,16 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 }
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn handle_compositor_request(&mut self, this: Resource<WlCompositor>, request: WlCompositorRequest) {
+	pub fn handle_compositor_request(&mut self, this: Resource<WlCompositor, ()>, request: WlCompositorRequest) {
 		match request {
 			WlCompositorRequest::CreateSurface(request) => self.handle_surface_create(this, request),
 			WlCompositorRequest::CreateRegion(request) => self.handle_region_create(this, request),
 		}
 	}
 
-	pub fn handle_surface_create(&mut self, this: Resource<WlCompositor>, request: wl_compositor::CreateSurfaceRequest) {
+	pub fn handle_surface_create(&mut self, this: Resource<WlCompositor, ()>, request: wl_compositor::CreateSurfaceRequest) {
 		let surface_renderer_data = self.graphics_state.renderer.create_surface_renderer_data().unwrap();
-		let surface_data = RefCell::new(SurfaceData::new(this.client(), surface_renderer_data));
+		let surface_data = SurfaceData::new(this.client(), surface_renderer_data);
 		request.id.register_fn(
 			surface_data,
 			|state, this, request| {
@@ -41,9 +41,9 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		);
 	}
 
-	pub fn handle_region_create(&mut self, _this: Resource<WlCompositor>, request: wl_compositor::CreateRegionRequest) {
+	pub fn handle_region_create(&mut self, _this: Resource<WlCompositor, ()>, request: wl_compositor::CreateRegionRequest) {
 		request.id.register_fn(
-			RefCell::new(RegionData::new()),
+			RegionData::new(),
 			|state, this, request| {
 				let state = state.get_mut::<CompositorState<I, G>>();
 				state.handle_region_request(this, request);
@@ -56,7 +56,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 }
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn handle_region_request(&mut self, this: Resource<WlRegion>, request: WlRegionRequest) {
+	pub fn handle_region_request(&mut self, this: Resource<WlRegion, RegionData>, request: WlRegionRequest) {
 		match request {
 			WlRegionRequest::Destroy => this.destroy(),
 			WlRegionRequest::Add(request) => self.handle_region_add(this, request),
@@ -64,28 +64,36 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn handle_region_add(&mut self, this: Resource<WlRegion>, request: wl_region::AddRequest) {
-		let region_data = this.get_user_data();
-		region_data.borrow_mut().add(Rect::new(request.x, request.y, request.width as u32, request.height as u32));
+	pub fn handle_region_add(&mut self, this: Resource<WlRegion, RegionData>, request: wl_region::AddRequest) {
+		let region_data = this.get_data();
+		region_data.inner.borrow_mut().add(Rect::new(request.x, request.y, request.width as u32, request.height as u32));
 	}
 
-	pub fn handle_region_subtract(&mut self, this: Resource<WlRegion>, request: wl_region::SubtractRequest) {
-		let region_data = this.get_user_data();
-		region_data.borrow_mut().subtract(Rect::new(request.x, request.y, request.width as u32, request.height as u32));
+	pub fn handle_region_subtract(&mut self, this: Resource<WlRegion, RegionData>, request: wl_region::SubtractRequest) {
+		let region_data = this.get_data();
+		region_data.inner.borrow_mut().subtract(Rect::new(request.x, request.y, request.width as u32, request.height as u32));
 	}
 }
 
 pub struct RegionData {
-	pub events: Vec<RegionEvent>,
+	inner: RefCell<RegionDataInner>,
 }
 
 impl RegionData {
 	pub fn new() -> Self {
 		Self {
-			events: Vec::new(),
+			inner: RefCell::new(RegionDataInner {
+				events: Vec::new(),
+			}),
 		}
 	}
+}
 
+pub struct RegionDataInner {
+	pub events: Vec<RegionEvent>,
+}
+
+impl RegionDataInner {
 	pub fn add(&mut self, rect: Rect) {
 		self.events.push(RegionEvent::Add(rect));
 	}
@@ -106,5 +114,3 @@ pub enum RegionEvent {
 	Add(Rect),
 	Subtract(Rect),
 }
-
-impl_user_data!(WlRegion, RefCell<RegionData>);

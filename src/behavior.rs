@@ -16,6 +16,9 @@ use crate::{
 		window::{WindowManager},
 		input::{KeyboardState},
 	},
+	compositor::{
+		surface::{SurfaceData},
+	},
 };
 
 pub mod client;
@@ -60,9 +63,9 @@ pub struct CompositorInner<I: InputBackend, G: GraphicsBackend> {
 	pub start_time: Instant,
 	pub window_manager: WindowManager<G>,
 	pub pointer: PointerState,
-	pub pointer_focus: Option<Resource<WlSurface>>,
+	pub pointer_focus: Option<Resource<WlSurface, SurfaceData<G>>>,
 	pub keyboard_state: KeyboardState,
-	pub keyboard_focus: Option<Resource<WlSurface>>,
+	pub keyboard_focus: Option<Resource<WlSurface, SurfaceData<G>>>,
 	pub output_globals: Vec<(Handle<Global>, Output<G>)>,
 	_phantom: PhantomData<I>,
 }

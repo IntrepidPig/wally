@@ -23,7 +23,7 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 
 				let client = output_resource.client();
 				let client = client.get().unwrap();
-				let client_state = client.state::<RefCell<ClientState>>();
+				let client_state = client.state::<RefCell<ClientState<G>>>();
 				client_state.borrow_mut().outputs.push(output_resource.clone());
 
 				let geometry_event = wl_output::GeometryEvent {
@@ -59,13 +59,13 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 }
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn handle_output_request(&mut self, this: Resource<WlOutput>, request: WlOutputRequest) {
+	pub fn handle_output_request(&mut self, this: Resource<WlOutput, OutputData<G>>, request: WlOutputRequest) {
 		match request {
 			WlOutputRequest::Release => self.handle_output_release(this),
 		}
 	}
 
-	pub fn handle_output_release(&mut self, _this: Resource<WlOutput>) {
+	pub fn handle_output_release(&mut self, _this: Resource<WlOutput, OutputData<G>>) {
 		log::warn!("Output release handling unimplemented");
 	}
 }
@@ -81,5 +81,3 @@ impl<G: GraphicsBackend> OutputData<G> {
 		}
 	}
 }
-
-impl_user_data_graphics!(WlOutput, OutputData<G>);

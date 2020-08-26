@@ -5,9 +5,9 @@ use std::{
 use crate::compositor::prelude::*;
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn set_surface_active(&mut self, surface: Resource<WlSurface>) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let surface_data = surface_data.borrow();
+	pub fn set_surface_active(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
+		let surface_data = surface.get_data();
+		let surface_data = surface_data.inner.borrow();
 		if let Some(ref role) = surface_data.role {
 			match *role {
 				Role::XdgSurface(ref xdg_surface) => self.set_xdg_surface_active(xdg_surface.clone()),
@@ -15,9 +15,9 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn unset_surface_active(&mut self, surface: Resource<WlSurface>) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let surface_data = surface_data.borrow();
+	pub fn unset_surface_active(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
+		let surface_data = surface.get_data();
+		let surface_data = surface_data.inner.borrow();
 		if let Some(ref role) = surface_data.role {
 			match *role {
 				Role::XdgSurface(ref xdg_surface) => self.unset_xdg_surface_active(xdg_surface.clone()),
@@ -25,16 +25,16 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn focus_surface_keyboard(&mut self, surface: Resource<WlSurface>) {
+	pub fn focus_surface_keyboard(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		let client = surface.client();
 		let client = client.get().unwrap();
-		let client_state = client.state::<RefCell<ClientState>>();
+		let client_state = client.state::<RefCell<ClientState<G>>>();
 		
 		for keyboard in &client_state.borrow().keyboards {
 			self.send_keyboard_modifiers(keyboard.clone());
 			let enter_event = wl_keyboard::EnterEvent {
 				serial: get_input_serial(),
-				surface: surface.clone(),
+				surface: surface.to_untyped(),
 				keys: Vec::new(), // TODO: actual value
 			};
 			keyboard.send_event(WlKeyboardEvent::Enter(enter_event));
@@ -42,30 +42,30 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		self.inner.keyboard_focus = Some(surface.clone());
 	}
 
-	pub fn unfocus_surface_keyboard(&mut self, surface: Resource<WlSurface>) {
+	pub fn unfocus_surface_keyboard(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		let client = surface.client();
 		let client = client.get().unwrap();
-		let client_state = client.state::<RefCell<ClientState>>();
+		let client_state = client.state::<RefCell<ClientState<G>>>();
 		
 		for keyboard in &client_state.borrow().keyboards {
 			keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
 				serial: get_input_serial(),
-				surface: surface.clone(),
+				surface: surface.to_untyped(),
 			}));
 		}
 
 		self.inner.keyboard_focus = None;
 	}
 
-	pub fn focus_surface_pointer(&mut self, surface: Resource<WlSurface>, point: Point) {
+	pub fn focus_surface_pointer(&mut self, surface: Resource<WlSurface, SurfaceData<G>>, point: Point) {
 		let client = surface.client();
 		let client = client.get().unwrap();
-		let client_state = client.state::<RefCell<ClientState>>();
+		let client_state = client.state::<RefCell<ClientState<G>>>();
 		
 		for pointer in &client_state.borrow().pointers {
 			pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
 				serial: get_input_serial(),
-				surface: surface.clone(),
+				surface: surface.to_untyped(),
 				surface_x: (point.x as f64).into(),
 				surface_y: (point.y as f64).into(),
 			}));
@@ -73,15 +73,15 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		self.inner.pointer_focus = Some(surface)
 	}
 
-	pub fn unfocus_surface_pointer(&mut self, surface: Resource<WlSurface>) {
+	pub fn unfocus_surface_pointer(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		let client = surface.client();
 		let client = client.get().unwrap();
-		let client_state = client.state::<RefCell<ClientState>>();
+		let client_state = client.state::<RefCell<ClientState<G>>>();
 
 		for pointer in &client_state.borrow().pointers {
 			pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
 				serial: get_input_serial(),
-				surface: surface.clone(),
+				surface: surface.to_untyped(),
 			}));
 		}
 		self.inner.pointer_focus = None;
@@ -100,38 +100,38 @@ impl<G: GraphicsBackend> WindowManager<G> {
 		}
 	}
 
-	pub fn add_surface(&mut self, surface: Resource<WlSurface>) -> Handle<Node<G>> {
+	pub fn add_surface(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) -> Handle<Node<G>> {
 		let position = Point::new((dumb_rand() % 200 + 50) as i32, (dumb_rand() % 200 + 50) as i32);
 		self.tree.add_window(surface, position)
 	}
 
-	pub fn remove_surface(&mut self, surface: Resource<WlSurface>) {
+	pub fn remove_surface(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		self.tree.remove_surface(surface);
 	}
 
-	pub fn focus_surface(&mut self, surface: Resource<WlSurface>) {
+	pub fn focus_surface(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		self.tree.focus_surface(surface);
 		// TODO: bring to top
 	}
 
-	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, new_size: Size) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let window_size = surface_data.borrow().get_solid_window_geometry().map(|geometry| geometry.size()).unwrap_or(new_size);
+	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface, SurfaceData<G>>, new_size: Size) {
+		let surface_data = surface.get_data();
+		let window_size = surface_data.inner.borrow().get_solid_window_geometry().map(|geometry| geometry.size()).unwrap_or(new_size);
 		if let Some(node) = self.tree.find_surface(&surface) {
 			node.size.set(Some(window_size));
 		}
 	}
 
-	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface>, new_size: Size) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let window_size = surface_data.borrow().get_solid_window_geometry().map(|geometry| geometry.size()).unwrap_or(new_size);
+	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface, SurfaceData<G>>, new_size: Size) {
+		let surface_data = surface.get_data();
+		let window_size = surface_data.inner.borrow().get_solid_window_geometry().map(|geometry| geometry.size()).unwrap_or(new_size);
 		if let Some(node) = self.tree.find_surface(&surface) {
 			node.size.set(Some(window_size));
 			node.draw.set(true);
 		}
 	}
 
-	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface>) {
+	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		if let Some(node) = self.tree.find_surface(&surface) {
 			node.draw.set(false);
 		}
@@ -160,11 +160,11 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		}
 	}
 
-	pub fn add_window(&mut self, surface: Resource<WlSurface>, mut position: Point) -> Handle<Node<G>> {
+	pub fn add_window(&mut self, surface: Resource<WlSurface, SurfaceData<G>>, mut position: Point) -> Handle<Node<G>> {
 		// TODO: ensure surface isn't already added
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let mut size = surface_data.borrow().buffer_size;
-		if let Some(window_geometry) = surface_data.borrow().get_solid_window_geometry() {
+		let surface_data = surface.get_data();
+		let mut size = surface_data.inner.borrow().buffer_size;
+		if let Some(window_geometry) = surface_data.inner.borrow().get_solid_window_geometry() {
 			position.x += window_geometry.x;
 			position.y += window_geometry.y;
 			size = Some(window_geometry.size());
@@ -175,13 +175,13 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		handle
 	}
 
-	pub fn remove_surface(&mut self, surface: Resource<WlSurface>) {
+	pub fn remove_surface(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		if let Some(position) = self.nodes.iter().position(|node| node.surface.borrow().is(&surface)) {
 			self.nodes.remove(position);
 		}
 	}
 
-	pub fn focus_surface(&mut self, surface: Resource<WlSurface>) {
+	pub fn focus_surface(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		for node in &mut self.nodes {
 			node.focused.set(node.surface.borrow().is(&surface));
 		}
@@ -214,7 +214,7 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		self.nodes.iter().find(|node| f(node)).map(|node| node.custom_ref())
 	}
 
-	pub fn find_surface(&self, surface: &Resource<WlSurface>) -> Option<Ref<Node<G>>> {
+	pub fn find_surface(&self, surface: &Resource<WlSurface, SurfaceData<G>>) -> Option<Ref<Node<G>>> {
 		self.find(|node| node.surface.borrow().is(surface))
 	}
 
@@ -229,7 +229,7 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 
 #[derive(Debug, Clone)]
 pub struct Node<G: GraphicsBackend> {
-	pub surface: RefCell<Resource<WlSurface>>,
+	pub surface: RefCell<Resource<WlSurface, SurfaceData<G>>>,
 	pub position: Cell<Point>,
 	pub size: Cell<Option<Size>>,
 	pub draw: Cell<bool>,
@@ -238,7 +238,7 @@ pub struct Node<G: GraphicsBackend> {
 }
 
 impl<G: GraphicsBackend> Node<G> {
-	pub fn new(surface: Resource<WlSurface>, position: Point, size: Option<Size>, draw: bool) -> Self {
+	pub fn new(surface: Resource<WlSurface, SurfaceData<G>>, position: Point, size: Option<Size>, draw: bool) -> Self {
 		Self {
 			surface: RefCell::new(surface),
 			position: Cell::new(position),
@@ -265,8 +265,8 @@ impl<G: GraphicsBackend> Node<G> {
 	/// Returns none if the node or the surface has no size.
 	pub fn node_surface_geometry(&self) -> Option<Rect> {
 		let surface = self.surface.borrow();
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let surface_data = surface_data.borrow();
+		let surface_data = surface.get_data();
+		let surface_data = surface_data.inner.borrow();
 		let surface_window_geometry = surface_data.get_solid_window_geometry();
 		match (self.node_geometry(), surface_data.get_surface_size()) {
 			(Some(node_geometry), Some(surface_size)) => {
@@ -297,8 +297,8 @@ impl<G: GraphicsBackend> Node<G> {
 	/// Returns none if the node or the surface has no size.
 	pub fn node_surface_point_to_surface_point(&self, node_point: Point) -> Option<Point> {
 		let surface = self.surface.borrow();
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let surface_data = surface_data.borrow();
+		let surface_data = surface.get_data();
+		let surface_data = surface_data.inner.borrow();
 		match (self.node_surface_geometry(), surface_data.get_surface_size()) {
 			(Some(node_surface_geometry), Some(surface_size)) => {
 				let cx = surface_size.width as f32 / node_surface_geometry.width as f32;

@@ -30,13 +30,13 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 }
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn handle_shm_request(&mut self, this: Resource<WlShm>, request: WlShmRequest) {
+	pub fn handle_shm_request(&mut self, this: Resource<WlShm, ()>, request: WlShmRequest) {
 		match request {
 			WlShmRequest::CreatePool(request) => self.handle_shm_create_pool(this, request),
 		}
 	}
 
-	pub fn handle_shm_create_pool(&mut self, _this: Resource<WlShm>, request: wl_shm::CreatePoolRequest) {
+	pub fn handle_shm_create_pool(&mut self, _this: Resource<WlShm, ()>, request: wl_shm::CreatePoolRequest) {
 		let shm_pool = self
 			.graphics_state
 			.renderer
@@ -55,7 +55,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		);
 	}
 
-	pub fn handle_shm_pool_request(&mut self, this: Resource<WlShmPool>, request: WlShmPoolRequest) {
+	pub fn handle_shm_pool_request(&mut self, this: Resource<WlShmPool, ShmPoolData<G>>, request: WlShmPoolRequest) {
 		match request {
 			WlShmPoolRequest::Destroy => self.handle_shm_pool_destroy(this),
 			WlShmPoolRequest::CreateBuffer(request) => self.handle_shm_pool_create_buffer(this, request),
@@ -63,12 +63,12 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn handle_shm_pool_destroy(&mut self, this: Resource<WlShmPool>) {
+	pub fn handle_shm_pool_destroy(&mut self, this: Resource<WlShmPool, ShmPoolData<G>>) {
 		this.destroy();
 	}
 
-	pub fn handle_shm_pool_create_buffer(&mut self, this: Resource<WlShmPool>, request: wl_shm_pool::CreateBufferRequest) {
-		let shm_pool: Ref<ShmPoolData<G>> = this.get_user_data();
+	pub fn handle_shm_pool_create_buffer(&mut self, this: Resource<WlShmPool, ShmPoolData<G>>, request: wl_shm_pool::CreateBufferRequest) {
+		let shm_pool: Ref<ShmPoolData<G>> = this.get_data();
 
 		let offset = usize::try_from(request.offset).unwrap();
 		let width = u32::try_from(request.width).unwrap();
@@ -98,21 +98,21 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		);
 	}
 
-	pub fn handle_shm_pool_resize(&mut self, this: Resource<WlShmPool>, request: wl_shm_pool::ResizeRequest) {
-		let shm_pool: Ref<ShmPoolData<G>> = this.get_user_data();
+	pub fn handle_shm_pool_resize(&mut self, this: Resource<WlShmPool, ShmPoolData<G>>, request: wl_shm_pool::ResizeRequest) {
+		let shm_pool: Ref<ShmPoolData<G>> = this.get_data();
 		self.graphics_state
 			.renderer
 			.resize_shm_pool(&mut *shm_pool.pool.borrow_mut(), request.size as usize)
 			.expect("Failed to resize shm pool");
 	}
 
-	pub fn handle_buffer_request(&mut self, this: Resource<WlBuffer>, request: WlBufferRequest) {
+	pub fn handle_buffer_request(&mut self, this: Resource<WlBuffer, BufferData<G>>, request: WlBufferRequest) {
 		match request {
 			WlBufferRequest::Destroy => self.handle_buffer_destroy(this),
 		}
 	}
 
-	pub fn handle_buffer_destroy(&mut self, this: Resource<WlBuffer>) {
+	pub fn handle_buffer_destroy(&mut self, this: Resource<WlBuffer, BufferData<G>>) {
 		this.destroy();
 	}
 }
@@ -140,7 +140,3 @@ impl<G: GraphicsBackend> BufferData<G> {
 		}
 	}
 }
-
-
-impl_user_data_graphics!(WlShmPool, ShmPoolData<G>);
-impl_user_data_graphics!(WlBuffer, BufferData<G>);

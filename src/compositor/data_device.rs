@@ -21,14 +21,14 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 }
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn handle_data_device_manager_request(&mut self, this: Resource<WlDataDeviceManager>, request: WlDataDeviceManagerRequest) {
+	pub fn handle_data_device_manager_request(&mut self, this: Resource<WlDataDeviceManager, ()>, request: WlDataDeviceManagerRequest) {
 		match request {
 			WlDataDeviceManagerRequest::CreateDataSource(request) => self.handle_data_device_manager_create_data_source(this, request),
 			WlDataDeviceManagerRequest::GetDataDevice(request) => self.handle_data_device_manager_get_data_device(this, request),
 		}
 	}
 
-	pub fn handle_data_device_manager_create_data_source(&mut self, _this: Resource<WlDataDeviceManager>, request: wl_data_device_manager::CreateDataSourceRequest) {
+	pub fn handle_data_device_manager_create_data_source(&mut self, _this: Resource<WlDataDeviceManager, ()>, request: wl_data_device_manager::CreateDataSourceRequest) {
 		request.id.register_fn(
 			(),
 			|state, this, request| {
@@ -41,7 +41,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		);
 	}
 
-	pub fn handle_data_device_manager_get_data_device(&mut self, _this: Resource<WlDataDeviceManager>, request: wl_data_device_manager::GetDataDeviceRequest) {
+	pub fn handle_data_device_manager_get_data_device(&mut self, _this: Resource<WlDataDeviceManager, ()>, request: wl_data_device_manager::GetDataDeviceRequest) {
 		request.id.register_fn(
 			(),
 			|_state, _this, request| {
@@ -53,7 +53,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		);
 	}
 
-	pub fn handle_data_source_request(&mut self, this: Resource<WlDataSource>, request: WlDataSourceRequest) {
+	pub fn handle_data_source_request(&mut self, this: Resource<WlDataSource, ()>, request: WlDataSourceRequest) {
 		match request {
 			WlDataSourceRequest::Offer(request) => self.handle_data_source_offer(this, request),
 			WlDataSourceRequest::Destroy => self.handle_data_source_destroy(this),
@@ -61,15 +61,15 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn handle_data_source_offer(&mut self, _this: Resource<WlDataSource>, _request: wl_data_source::OfferRequest) {
+	pub fn handle_data_source_offer(&mut self, _this: Resource<WlDataSource, ()>, _request: wl_data_source::OfferRequest) {
 		log::warn!("wl_data_source::offer not implemented");
 	}
 
-	pub fn handle_data_source_destroy(&mut self, this: Resource<WlDataSource>) {
+	pub fn handle_data_source_destroy(&mut self, this: Resource<WlDataSource, ()>) {
 		this.destroy()
 	}
 
-	pub fn handle_data_source_set_actions(&mut self, _this: Resource<WlDataSource>, _request: wl_data_source::SetActionsRequest) {
+	pub fn handle_data_source_set_actions(&mut self, _this: Resource<WlDataSource, ()>, _request: wl_data_source::SetActionsRequest) {
 		log::warn!("wl_data_source::set_actions not implemented");
 	}
 }

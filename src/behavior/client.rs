@@ -7,13 +7,13 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct ClientState {
-	pub(crate) keyboards: Vec<Resource<WlKeyboard>>,
-	pub(crate) pointers: Vec<Resource<WlPointer>>,
-	pub(crate) outputs: Vec<Resource<WlOutput>>,
+pub struct ClientState<G: GraphicsBackend> {
+	pub(crate) keyboards: Vec<Resource<WlKeyboard, ()>>,
+	pub(crate) pointers: Vec<Resource<WlPointer, ()>>,
+	pub(crate) outputs: Vec<Resource<WlOutput, OutputData<G>>>,
 }
 
-impl ClientState {
+impl<G: GraphicsBackend> ClientState<G> {
 	pub fn new() -> Self {
 		Self {
 			keyboards: Vec::new(),

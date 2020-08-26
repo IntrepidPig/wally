@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::{
 	backend::{GraphicsBackend, RgbaInfo, Vertex},
-	compositor::{prelude::*, surface::SurfaceData, shm::BufferData},
+	compositor::{prelude::*, shm::BufferData},
 	behavior::{
 		window::{Node},
 	}
@@ -186,9 +186,9 @@ impl<G: GraphicsBackend> Renderer<G> {
 	// TODO: handle other sorts of buffers (DMA buffers!)
 	pub fn create_texture_from_wl_buffer(
 		&mut self,
-		wl_buffer: Resource<WlBuffer>,
+		wl_buffer: Resource<WlBuffer, BufferData<G>>,
 	) -> Result<G::TextureHandle, G::Error> {
-		let buffer_data: Ref<BufferData<G>> = wl_buffer.get_user_data();
+		let buffer_data: Ref<BufferData<G>> = wl_buffer.get_data();
 		let texture_handle = self.backend.create_texture_from_shm_buffer(&buffer_data.buffer)?;
 		Ok(texture_handle)
 	}
@@ -295,8 +295,8 @@ impl<'a, G: GraphicsBackend> SceneRenderState<'a, G> {
 		let node_surface_geometry = node.node_surface_geometry();
 
 		let surface = node.surface.borrow().clone();
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let mut surface_data = surface_data.borrow_mut();
+		let surface_data = surface.get_data();
+		let mut surface_data = surface_data.inner.borrow_mut();
 
 		// If the surface has been committed a buffer that hasn't been uploaded to the graphics
 		// backend yet, do that now.

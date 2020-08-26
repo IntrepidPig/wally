@@ -39,12 +39,11 @@ pub mod prelude {
 		},
 		compositor::{
 			get_input_serial, get_time_ms,
-			Compositor, UserDataAccess,
+			Compositor,
 			surface::{Role, SurfaceData},
 			output::{OutputData},
 		},
 		renderer::{Renderer},
-		impl_user_data, impl_user_data_graphics,
 	};
 }
 
@@ -57,8 +56,6 @@ pub mod output;
 pub mod seat;
 pub mod shell;
 pub mod xdg;
-
-//pub type Synced<T> = Arc<Mutex<T>>;
 
 pub(crate) static INPUT_SERIAL: AtomicU32 = AtomicU32::new(1);
 pub(crate) static PROFILE_OUTPUT: AtomicBool = AtomicBool::new(false);
@@ -208,7 +205,7 @@ impl<I: InputBackend, G: GraphicsBackend> Compositor<I, G> {
 					log::error!("An error occurred in the event loop: {}", e);
 				}
 			}
-			match self.server.dispatch(|_handle| RefCell::new(ClientState::new())) {
+			match self.server.dispatch(|_handle| RefCell::new(ClientState::<G>::new())) {
 				Ok(()) => {},
 				Err(e) => {
 					log::error!("Error dispatching requests: {}", e);
@@ -247,42 +244,6 @@ impl<I: InputBackend, G: GraphicsBackend> Drop for Compositor<I, G> {
 	fn drop(&mut self) {
 		log::info!("Closing wayland socket");
 		fs::remove_file("/run/user/1000/wayland-0").unwrap();
-	}
-}
-
-pub trait UserDataAccess<T> {
-	fn try_get_user_data(&self) -> Option<Ref<T>>;
-
-	fn get_user_data(&self) -> Ref<T> {
-		self.try_get_user_data().expect("Object was destroyed")
-	}
-}
-
-#[macro_export]
-macro_rules! impl_user_data_graphics {
-	($i:ty, $t:ty) => {
-		impl<G: GraphicsBackend> UserDataAccess<$t> for Resource<$i> {
-			fn try_get_user_data(&self) -> Option<Ref<$t>> {
-				self.object().get().map(|object| {
-					let data = object.get_data::<$t>().unwrap().upgrade();
-					data.custom_ref()
-				})
-			}
-		}
-	};
-}
-
-#[macro_export]
-macro_rules! impl_user_data {
-	($i:ty, $t:ty) => {
-		impl UserDataAccess<$t> for Resource<$i> {
-			fn try_get_user_data(&self) -> Option<Ref<$t>> {
-				self.object().get().map(|object| {
-					let data = object.get_data::<$t>().unwrap().upgrade();
-					data.custom_ref()
-				})
-			}
-		}
 	}
 }
 

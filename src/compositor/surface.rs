@@ -8,13 +8,14 @@ use super::prelude::*;
 use crate::{
 	backend::{ShmBuffer},
 	compositor::{
-		shm::{BufferData}
+		shm::{BufferData},
+		xdg::{XdgSurfaceData},
 	},
 	renderer::{SurfaceRendererData},
 };
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn handle_surface_request(&mut self, this: Resource<WlSurface>, request: WlSurfaceRequest) {
+	pub fn handle_surface_request(&mut self, this: Resource<WlSurface, SurfaceData<G>>, request: WlSurfaceRequest) {
 		match request {
 			WlSurfaceRequest::Destroy => self.handle_surface_destroy(this),
 			WlSurfaceRequest::Attach(request) => self.handle_surface_attach(this, request),
@@ -29,13 +30,13 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn handle_surface_destroy(&mut self, this: Resource<WlSurface>) {
+	pub fn handle_surface_destroy(&mut self, this: Resource<WlSurface, SurfaceData<G>>) {
 		this.destroy();
 	}
 
-	pub fn handle_surface_attach(&mut self, this: Resource<WlSurface>, request: wl_surface::AttachRequest) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
-		let surface_data = &mut *surface_data.borrow_mut();
+	pub fn handle_surface_attach(&mut self, this: Resource<WlSurface, SurfaceData<G>>, request: wl_surface::AttachRequest) {
+		let surface_data = this.get_data();
+		let mut surface_data = surface_data.inner.borrow_mut();
 
 		// Release the previously attached buffer if it hasn't been committed yet
 		if let Some(Some((old_buffer, _))) = surface_data.pending_state.attached_buffer.take() {
@@ -43,6 +44,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		};
 		// Attach the new buffer to the surface
 		if let Some(buffer) = request.buffer {
+			let buffer = buffer.downcast_data().unwrap();
 			surface_data.pending_state.attached_buffer = Some(Some((buffer, Point::new(request.x, request.y))));
 		} else {
 			// Attaching a null buffer to a surface is equivalent to unmapping it.
@@ -50,20 +52,20 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn handle_surface_commit(&mut self, this: Resource<WlSurface>) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
-		let old_size = surface_data.borrow().buffer_size;
-		surface_data.borrow_mut().commit_pending_state();
-		let new_size = surface_data.borrow().buffer_size;
+	pub fn handle_surface_commit(&mut self, this: Resource<WlSurface, SurfaceData<G>>) {
+		let surface_data = this.get_data();
+		let old_size = surface_data.inner.borrow().buffer_size;
+		surface_data.inner.borrow_mut().commit_pending_state();
+		let new_size = surface_data.inner.borrow().buffer_size;
 
 		if old_size != new_size {
 			self.handle_surface_size_set(this, old_size, new_size);
 		}
 	}
 
-	pub fn handle_surface_frame(&mut self, this: Resource<WlSurface>, request: wl_surface::FrameRequest) {
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = this.get_user_data();
-		let surface_data = &mut *surface_data.borrow_mut();
+	pub fn handle_surface_frame(&mut self, this: Resource<WlSurface, SurfaceData<G>>, request: wl_surface::FrameRequest) {
+		let surface_data = this.get_data();
+		let surface_data = &mut *surface_data.inner.borrow_mut();
 		let callback = request.callback.register_fn(
 			(),
 			|_, _, _| {},
@@ -78,7 +80,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		}
 	}
 
-	pub fn destroy_surface(&mut self, surface: Resource<WlSurface>) {
+	pub fn destroy_surface(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		self.inner.window_manager.remove_surface(surface.clone());
 
 		if self.inner.pointer_focus.as_ref().map(|focus| focus.is(&surface)).unwrap_or(false) {
@@ -89,8 +91,8 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			self.inner.keyboard_focus.take();
 		}
 
-		let surface_data: Ref<RefCell<SurfaceData<G>>> = surface.get_user_data();
-		let mut surface_data = surface_data.borrow_mut();
+		let surface_data = surface.get_data();
+		let mut surface_data = surface_data.inner.borrow_mut();
 
 		match self.graphics_state.renderer.destroy_surface_renderer_data(surface_data.renderer_data.take().unwrap()) {
 			Ok(()) => {},
@@ -102,7 +104,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 }
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
-	pub fn handle_surface_size_set(&mut self, surface: Resource<WlSurface>, old_size: Option<Size>, new_size: Option<Size>) {
+	pub fn handle_surface_size_set(&mut self, surface: Resource<WlSurface, SurfaceData<G>>, old_size: Option<Size>, new_size: Option<Size>) {
 		match (old_size, new_size) {
 			(Some(_old_size), Some(new_size)) => self.handle_surface_resize(surface.clone(), new_size),
 			(None, Some(new_size)) => self.handle_surface_map(surface.clone(), new_size),
@@ -114,32 +116,32 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		self.update_surface_outputs(surface);
 	}
 
-	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+	pub fn handle_surface_resize(&mut self, surface: Resource<WlSurface, SurfaceData<G>>, new_size: Size) {
 		self.inner.window_manager.handle_surface_resize(surface, new_size);
 	}
-	
-	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface>, new_size: Size) {
+
+	pub fn handle_surface_map(&mut self, surface: Resource<WlSurface, SurfaceData<G>>, new_size: Size) {
 		self.inner.window_manager.handle_surface_map(surface, new_size);
 	}
 
-	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface>) {
+	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		self.inner.window_manager.handle_surface_unmap(surface);
 	}
 
-	pub fn update_surface_outputs(&mut self, surface: Resource<WlSurface>) {
+	pub fn update_surface_outputs(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		// TODO: add support for exits
 		let client = surface.client();
 		let client = client.get().unwrap();
-		let client_state = client.state::<RefCell<ClientState>>();
+		let client_state = client.state::<RefCell<ClientState<G>>>();
 
 		let node = self.inner.window_manager.tree.find(|node| node.surface.borrow().is(&surface));
 		
 		for output in &client_state.borrow().outputs {
-			let output_data: Ref<OutputData<G>> = output.get_user_data();
+			let output_data: Ref<OutputData<G>> = output.get_data();
 			if let Some(geometry) = node.as_ref().and_then(|node| node.node_surface_geometry()) {
 				if geometry.intersects(output_data.output.viewport) {
 					surface.send_event(WlSurfaceEvent::Enter(wl_surface::EnterEvent {
-						output: output.clone(),
+						output: output.to_untyped(),
 					}));
 				}
 			}
@@ -147,12 +149,33 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	}
 }
 
-pub struct PendingState {
-	pub attached_buffer: Option<Option<(Resource<WlBuffer>, Point)>>,
+pub struct SurfaceData<G: GraphicsBackend> {
+	pub inner: RefCell<SurfaceDataInner<G>>,
+}
+
+impl<G: GraphicsBackend> SurfaceData<G> {
+	pub fn new(client: Handle<Client>, renderer_data: SurfaceRendererData<G>) -> Self {
+		Self {
+			inner: RefCell::new(SurfaceDataInner {
+				client,
+				pending_state: PendingState::new(),
+				committed_buffer: None,
+				buffer_size: None,
+				input_region: None,
+				callback: None,
+				role: None,
+				renderer_data: Some(renderer_data),
+			}),
+		}
+	}
+}
+
+pub struct PendingState<G: GraphicsBackend> {
+	pub attached_buffer: Option<Option<(Resource<WlBuffer, BufferData<G>>, Point)>>,
 	pub input_region: Option<Rect>,
 }
 
-impl PendingState {
+impl<G: GraphicsBackend> PendingState<G> {
 	pub fn new() -> Self {
 		Self {
 			attached_buffer: None,
@@ -160,6 +183,7 @@ impl PendingState {
 		}
 	}
 }
+
 /// This is the data associated with every surface. It is used to store the pending and committed state of the surface
 /// (including pending and committed WlBuffers), the data required by the graphics backend for each surface, the
 /// location and size of the surface, and the input devices useable by the surface.
@@ -171,35 +195,22 @@ impl PendingState {
 /// geometry as translated from surface geometry. Window geometry is determined in a role specific manner.
 ///
 /// The surface's role determines how it's geometry is decided.
-pub struct SurfaceData<G: GraphicsBackend> {
+pub struct SurfaceDataInner<G: GraphicsBackend> {
 	pub client: Handle<Client>,
 	/// All of the pending state that has been requested by the client but not yet committed
-	pub pending_state: PendingState,
+	pub pending_state: PendingState<G>,
 	/// The most recently committed buffer to this surface
-	pub committed_buffer: Option<(Resource<WlBuffer>, Point)>,
+	pub committed_buffer: Option<(Resource<WlBuffer, BufferData<G>>, Point)>,
 	/// This field is updated whenever a new buffer is committed
 	pub buffer_size: Option<Size>,
 	pub input_region: Option<Rect>,
-	pub callback: Option<Resource<WlCallback>>,
-	pub role: Option<Role>,
+	pub callback: Option<Resource<WlCallback, ()>>,
+	pub role: Option<Role<G>>,
 	/// The data that is necessary for the specific graphics backend to render this surface
 	pub renderer_data: Option<SurfaceRendererData<G>>,
 }
 
-impl<G: GraphicsBackend> SurfaceData<G> {
-	pub fn new(client: Handle<Client>, renderer_data: SurfaceRendererData<G>) -> Self {
-		Self {
-			client,
-			pending_state: PendingState::new(),
-			committed_buffer: None,
-			buffer_size: None,
-			input_region: None,
-			callback: None,
-			role: None,
-			renderer_data: Some(renderer_data),
-		}
-	}
-
+impl<G: GraphicsBackend> SurfaceDataInner<G> {
 	pub fn get_surface_size(&self) -> Option<Size> {
 		self.buffer_size
 	}
@@ -216,7 +227,7 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 					// TODO
 					log::error!("Buffer attachments with a specific position are not supported yet");
 				}
-				let committed_buffer_data: Ref<BufferData<G>> = new_buffer.get_user_data();
+				let committed_buffer_data: Ref<BufferData<G>> = new_buffer.get_data();
 				self.buffer_size = Some(Size::new(
 					committed_buffer_data.buffer.width() as u32,
 					committed_buffer_data.buffer.height() as u32,
@@ -250,15 +261,13 @@ impl<G: GraphicsBackend> SurfaceData<G> {
 	}
 }
 
-impl_user_data_graphics!(WlSurface, RefCell<SurfaceData<G>>);
-
 #[derive(Clone)]
-pub enum Role {
-	XdgSurface(Resource<XdgSurface>),
+pub enum Role<G: GraphicsBackend> {
+	XdgSurface(Resource<XdgSurface, XdgSurfaceData<G>>),
 }
 
 // TODO: maybe move these to CompositorState impl like in the xdg module?
-impl Role {
+impl<G: GraphicsBackend> Role<G> {
 	pub fn destroy(&mut self) {
 		match *self {
 			Role::XdgSurface(ref _xdg_surface) => {}
@@ -268,7 +277,7 @@ impl Role {
 	pub fn commit_pending_state(&mut self) {
 		match self {
 			Role::XdgSurface(ref xdg_surface) => {
-				xdg_surface.get_user_data().borrow_mut().commit_pending_state()
+				xdg_surface.get_data().inner.borrow_mut().commit_pending_state()
 			}
 		}
 	}
@@ -282,20 +291,20 @@ impl Role {
 	pub fn get_solid_window_geometry(&self) -> Option<Rect> {
 		match self {
 			Role::XdgSurface(ref xdg_surface) => {
-				let xdg_surface_data = xdg_surface.get_user_data();
-				let geometry = xdg_surface_data.borrow().solid_window_geometry;
+				let xdg_surface_data = xdg_surface.get_data();
+				let geometry = xdg_surface_data.inner.borrow().solid_window_geometry;
 				geometry
 			}
 		}
 	}
 }
 
-impl fmt::Debug for Role {
+impl<G: GraphicsBackend> fmt::Debug for Role<G> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
 			Role::XdgSurface(ref xdg_surface) => {
-				let xdg_surface_data = xdg_surface.get_user_data();
-				let res = write!(f, "Role: {:?}", xdg_surface_data.borrow());
+				let xdg_surface_data = xdg_surface.get_data();
+				let res = write!(f, "Role: {:?}", xdg_surface_data.inner.borrow());
 				res
 			}
 		}

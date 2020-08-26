@@ -118,7 +118,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			// TODO: check aliveness
 			let client = focused.client();
 			let client = client.get().unwrap();
-			let client_state = client.state::<RefCell<ClientState>>();
+			let client_state = client.state::<RefCell<ClientState<G>>>();
 			let client_state = client_state.borrow();
 
 			for keyboard in &client_state.keyboards {
@@ -172,7 +172,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 			let client = surface.client();
 			let client = client.get().unwrap();
-			let client_state = client.state::<RefCell<ClientState>>();
+			let client_state = client.state::<RefCell<ClientState<G>>>();
 
 			// Send the surface the actual motion event
 			for pointer in &client_state.borrow().pointers {
@@ -219,7 +219,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		if let Some(focused) = self.inner.keyboard_focus.clone() {
 			let client = focused.client();
 			let client = client.get().unwrap();
-			let client_state = client.state::<RefCell<ClientState>>();
+			let client_state = client.state::<RefCell<ClientState<G>>>();
 
 			for pointer in &client_state.borrow().pointers {
 				pointer.send_event(WlPointerEvent::Button(wl_pointer::ButtonEvent {
