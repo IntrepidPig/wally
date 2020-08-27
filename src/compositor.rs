@@ -1,7 +1,7 @@
 use std::{
 	fs::{self},
 	marker::PhantomData,
-	sync::atomic::{AtomicBool, AtomicU32, Ordering},
+	sync::atomic::{AtomicBool, Ordering},
 	time::{Duration, Instant},
 };
 
@@ -38,8 +38,8 @@ pub mod prelude {
 			input::{KeyboardState},
 		},
 		compositor::{
-			get_input_serial, get_time_ms,
-			Compositor,
+			get_time_ms,
+			Compositor, Serial,
 			surface::{Role, SurfaceData},
 			output::{OutputData},
 		},
@@ -57,26 +57,40 @@ pub mod seat;
 pub mod shell;
 pub mod xdg;
 
-pub(crate) static INPUT_SERIAL: AtomicU32 = AtomicU32::new(1);
 pub(crate) static PROFILE_OUTPUT: AtomicBool = AtomicBool::new(false);
 pub(crate) static START_TIME: Lazy<Instant> = Lazy::new(|| Instant::now());
 pub(crate) static DEBUG_OUTPUT: AtomicBool = AtomicBool::new(false);
-
-pub fn get_input_serial() -> u32 {
-	INPUT_SERIAL.fetch_add(1, Ordering::Relaxed)
-}
 
 pub fn profile_output() -> bool {
 	PROFILE_OUTPUT.load(Ordering::Relaxed)
 }
 
+pub fn debug_output() -> bool {
+	DEBUG_OUTPUT.load(Ordering::Relaxed)
+}
+
+// TODO: this or the one stored in CompositorState
 pub fn get_time_ms() -> u32 {
 	let elapsed = START_TIME.elapsed();
 	((elapsed.as_secs() % std::u32::MAX as u64) as u32).wrapping_add(elapsed.subsec_nanos())
 }
 
-pub fn debug_output() -> bool {
-	DEBUG_OUTPUT.load(Ordering::Relaxed)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Serial(pub u64);
+
+impl Serial {
+	pub fn as_u32(&self) -> u32 {
+		(self.0 % std::u32::MAX as u64) as u32
+	}
+
+	pub fn advance(&mut self) -> Serial {
+		let old = *self;
+		self.0 = self.0 + 1;
+		if self.0 % std::u32::MAX as u64 == 0 {
+			log::warn!("Input serial wrapped around, not sure what happens here");
+		}
+		old
+	}
 }
 
 pub struct Compositor<I: InputBackend, G: GraphicsBackend> {

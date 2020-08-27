@@ -30,15 +30,20 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState<G>>>();
 		
-		for keyboard in &client_state.borrow().keyboards {
-			self.send_keyboard_modifiers(keyboard.clone());
-			let enter_event = wl_keyboard::EnterEvent {
-				serial: get_input_serial(),
-				surface: surface.to_untyped(),
-				keys: Vec::new(), // TODO: actual value
-			};
-			keyboard.send_event(WlKeyboardEvent::Enter(enter_event));
+		if let Some(ref seat) = client_state.borrow().seat {
+			let seat_data = seat.get_data();
+			let seat_data = seat_data.inner.borrow();
+			if let Some(ref keyboard) = seat_data.keyboard {
+				let serial = seat_data.next_keyboard_serial();
+				self.inner.keyboard_state.send_current_keyboard_modifiers(keyboard.clone(), serial);
+				keyboard.send_event(WlKeyboardEvent::Enter(wl_keyboard::EnterEvent {
+					serial: serial.as_u32(),
+					surface: surface.to_untyped(),
+					keys: Vec::new(), // TODO: actual value
+				}));
+			}
 		}
+
 		self.inner.keyboard_focus = Some(surface.clone());
 	}
 
@@ -47,11 +52,15 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState<G>>>();
 		
-		for keyboard in &client_state.borrow().keyboards {
-			keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
-				serial: get_input_serial(),
-				surface: surface.to_untyped(),
-			}));
+		if let Some(ref seat) = client_state.borrow().seat {
+			let seat_data = seat.get_data();
+			let seat_data = seat_data.inner.borrow();
+			if let Some(ref keyboard) = seat_data.keyboard {
+				keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
+					serial: seat_data.next_keyboard_serial().as_u32(),
+					surface: surface.to_untyped(),
+				}));
+			}
 		}
 
 		self.inner.keyboard_focus = None;
@@ -62,14 +71,19 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState<G>>>();
 		
-		for pointer in &client_state.borrow().pointers {
-			pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
-				serial: get_input_serial(),
-				surface: surface.to_untyped(),
-				surface_x: (point.x as f64).into(),
-				surface_y: (point.y as f64).into(),
-			}));
+		if let Some(ref seat) = client_state.borrow().seat {
+			let seat_data = seat.get_data();
+			let seat_data = seat_data.inner.borrow();
+			if let Some(ref pointer) = seat_data.pointer {
+				pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
+					serial: seat_data.next_pointer_serial().as_u32(),
+					surface: surface.to_untyped(),
+					surface_x: (point.x as f64).into(),
+					surface_y: (point.y as f64).into(),
+				}));
+			}
 		}
+
 		self.inner.pointer_focus = Some(surface)
 	}
 
@@ -78,12 +92,17 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let client = client.get().unwrap();
 		let client_state = client.state::<RefCell<ClientState<G>>>();
 
-		for pointer in &client_state.borrow().pointers {
-			pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
-				serial: get_input_serial(),
-				surface: surface.to_untyped(),
-			}));
+		if let Some(ref seat) = client_state.borrow().seat {
+			let seat_data = seat.get_data();
+			let seat_data = seat_data.inner.borrow();
+			if let Some(ref pointer) = seat_data.pointer {
+				pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
+					serial: seat_data.next_pointer_serial().as_u32(),
+					surface: surface.to_untyped(),
+				}));
+			}
 		}
+
 		self.inner.pointer_focus = None;
 	}
 }

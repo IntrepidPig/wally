@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use calloop::channel::{self, Channel, Sender};
 use thiserror::Error;
 use winit::{
@@ -25,7 +23,6 @@ impl WinitInputBackend {
 	}
 
 	pub fn start(sender: Sender<BackendEvent>, event_loop: EventLoop<()>, window: Arc<winit::window::Window>) {
-		let start = Instant::now();
 		let mut ctrl_pressed = false;
 		let mut pointer_grabbed = false;
 		event_loop.run(
@@ -75,8 +72,6 @@ impl WinitInputBackend {
 							}
 						}
 						Some(BackendEvent::KeyPress(KeyPress {
-							serial: crate::compositor::get_input_serial(),
-							time: start.elapsed().as_millis() as u32,
 							key: input.scancode,
 							state: input.state.into(),
 						}))
@@ -87,8 +82,6 @@ impl WinitInputBackend {
 					} => {
 						if pointer_grabbed {
 							Some(BackendEvent::PointerMotion(PointerMotion {
-								serial: crate::compositor::get_input_serial(),
-								time: start.elapsed().as_millis() as u32,
 								dx: delta.0,
 								dx_unaccelerated: delta.0,
 								dy: delta.1,
@@ -110,8 +103,6 @@ impl WinitInputBackend {
 						} {
 							if pointer_grabbed {
 								Some(BackendEvent::PointerButton(PointerButton {
-									serial: crate::compositor::get_input_serial(),
-									time: start.elapsed().as_millis() as u32,
 									button,
 									state: state.into(),
 								}))

@@ -10,8 +10,10 @@ use wl_server::{
 	protocol::*,
 };
 
-use crate::compositor::prelude::*;
+use crate::compositor::{seat::{KeyboardData}, prelude::*};
 
+// TODO this probably should be both per-seat and handled by the input backend rather than in
+// the compositor state.
 pub struct KeyboardState {
 	pub xkb: xkb::Context,
 	pub keymap: xkb::Keymap,
@@ -20,6 +22,7 @@ pub struct KeyboardState {
 	pub fd: RawFd,
 	pub tmp: std::fs::File,
 	pub xkb_modifiers_state: XkbModifiersState,
+	pub mods_state_change: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +57,7 @@ impl KeyboardState {
 				mods_locked: 0,
 				group: 0,
 			},
+			mods_state_change: false,
 		}
 	}
 
@@ -62,8 +66,10 @@ impl KeyboardState {
 		let new_modifiers = self.get_modifier_state();
 		if new_modifiers != self.xkb_modifiers_state {
 			self.xkb_modifiers_state = new_modifiers;
+			self.mods_state_change = true;
 			true
 		} else {
+			self.mods_state_change = false;
 			false
 		}
 	}
@@ -79,6 +85,17 @@ impl KeyboardState {
 			mods_locked,
 			group,
 		}
+	}
+
+	pub fn send_current_keyboard_modifiers(&self, keyboard: Resource<WlKeyboard, KeyboardData>, serial: Serial) {
+		let mods = self.xkb_modifiers_state;
+		keyboard.send_event(WlKeyboardEvent::Modifiers(wl_keyboard::ModifiersEvent {
+			serial: serial.as_u32(),
+			mods_depressed: mods.mods_depressed,
+			mods_latched: mods.mods_latched,
+			mods_locked: mods.mods_locked,
+			group: mods.group,
+		}));
 	}
 }
 
@@ -111,7 +128,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	}
 
 	pub fn handle_key_press(&mut self, key_press: KeyPress) {
-		let state_change = self.inner.keyboard_state.update_key(key_press.clone());
+		self.inner.keyboard_state.update_key(key_press.clone());
 
 		// Send the key event to the surface that currently has keyboard focus, and an updated modifiers event if modifiers changed.
 		if let Some(focused) = self.inner.keyboard_focus.clone() {
@@ -121,17 +138,8 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			let client_state = client.state::<RefCell<ClientState<G>>>();
 			let client_state = client_state.borrow();
 
-			for keyboard in &client_state.keyboards {
-				if state_change {
-					self.send_keyboard_modifiers(keyboard.clone());
-				}
-				let key_event = wl_keyboard::KeyEvent {
-					serial: key_press.serial,
-					time: key_press.time,
-					key: key_press.key,
-					state: key_press.state.into(),
-				};
-				keyboard.send_event(WlKeyboardEvent::Key(key_event));
+			if let Some(ref seat) = client_state.seat {
+				self.send_keyboard_key_event(seat.clone(), key_press);
 			}
 		}
 	}
@@ -169,18 +177,13 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 				self.focus_surface_pointer(surface.clone(), surface_relative_coords);
 			}
 
-
+			// Send the surface the actual motion event
 			let client = surface.client();
 			let client = client.get().unwrap();
 			let client_state = client.state::<RefCell<ClientState<G>>>();
-
-			// Send the surface the actual motion event
-			for pointer in &client_state.borrow().pointers {
-				pointer.send_event(WlPointerEvent::Motion(wl_pointer::MotionEvent {
-					time: get_input_serial(),
-					surface_x: (surface_relative_coords.x as f64).into(),
-					surface_y: (surface_relative_coords.y as f64).into(),
-				}));
+			let client_state = client_state.borrow();
+			if let Some(ref seat) = client_state.seat {
+				self.send_pointer_motion_event(seat.clone(), surface_relative_coords);
 			}
 		} else {
 			// The pointer is not over any surface, remove pointer focus from the previous focused surface if any
@@ -215,19 +218,14 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			}
 		}
 
-		// Send event to focused window
-		if let Some(focused) = self.inner.keyboard_focus.clone() {
+		// Send event to the pointer of the seat of the focused window
+		if let Some(focused) = self.inner.pointer_focus.clone() {
 			let client = focused.client();
 			let client = client.get().unwrap();
 			let client_state = client.state::<RefCell<ClientState<G>>>();
-
-			for pointer in &client_state.borrow().pointers {
-				pointer.send_event(WlPointerEvent::Button(wl_pointer::ButtonEvent {
-					serial: pointer_button.serial,
-					time: pointer_button.time,
-					button: pointer_button.button.to_wl(),
-					state: pointer_button.state.into(),
-				}));
+			let client_state = client_state.borrow();
+			if let Some(ref seat) = client_state.seat {
+				self.send_pointer_button_event(seat.clone(), pointer_button);
 			}
 		}
 	}

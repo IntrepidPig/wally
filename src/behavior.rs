@@ -32,6 +32,13 @@ pub struct CompositorState<I: InputBackend, G: GraphicsBackend> {
 }
 
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
+	pub fn time(&self) -> CompositorTime {
+		let dur = self.inner.start_time.elapsed();
+		CompositorTime(dur.as_secs() * 1000 + dur.subsec_millis() as u64)
+	}
+}
+
+impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn print_debug_info(&self) {
 		
 	}
@@ -83,6 +90,15 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorInner<I, G> {
 			output_globals: Vec::new(),
 			_phantom: PhantomData,
 		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CompositorTime(pub u64);
+
+impl CompositorTime {
+	pub fn as_u32(self) -> u32 {
+		(self.0 % std::u32::MAX as u64) as u32
 	}
 }
 

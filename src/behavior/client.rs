@@ -3,21 +3,19 @@ use wl_server::{
 };
 
 use crate::{
-	compositor::prelude::*,
+	compositor::{seat::SeatData, prelude::*},
 };
 
 #[derive(Debug)]
 pub struct ClientState<G: GraphicsBackend> {
-	pub(crate) keyboards: Vec<Resource<WlKeyboard, ()>>,
-	pub(crate) pointers: Vec<Resource<WlPointer, ()>>,
-	pub(crate) outputs: Vec<Resource<WlOutput, OutputData<G>>>,
+	pub seat: Option<Resource<WlSeat, SeatData>>,
+	pub outputs: Vec<Resource<WlOutput, OutputData<G>>>,
 }
 
 impl<G: GraphicsBackend> ClientState<G> {
 	pub fn new() -> Self {
 		Self {
-			keyboards: Vec::new(),
-			pointers: Vec::new(),
+			seat: None,
 			outputs: Vec::new(),
 		}
 	}

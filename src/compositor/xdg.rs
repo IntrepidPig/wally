@@ -1,14 +1,16 @@
 use std::{
 	fmt,
+	cell::{Cell},
 };
 
 use wl_protocols::xdg_shell::*;
 
-use super::prelude::*;
+use super::{prelude::*};
 
 #[derive(Clone)]
 pub struct XdgSurfaceData<G: GraphicsBackend> {
 	pub inner: RefCell<XdgSurfaceDataInner<G>>,
+	next_configure_serial: Cell<Serial>,
 }
 
 impl<G: GraphicsBackend> XdgSurfaceData<G> {
@@ -20,7 +22,15 @@ impl<G: GraphicsBackend> XdgSurfaceData<G> {
 				solid_window_geometry: None,
 				xdg_surface_role: None,
 			}),
+			next_configure_serial: Cell::new(Serial(1)),
 		}
+	}
+
+	pub fn next_configure_serial(&self) -> Serial {
+		let mut new_serial = self.next_configure_serial.get();
+		let old_serial = new_serial.advance();
+		self.next_configure_serial.set(new_serial);
+		old_serial
 	}
 }
 
@@ -250,8 +260,9 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	}
 
 	pub fn finish_xdg_surface_configure(&mut self, this: Resource<XdgSurface, XdgSurfaceData<G>>) {
+		let xdg_surface_data = this.get_data();
 		let configure_event = xdg_surface::ConfigureEvent {
-			serial: get_input_serial(),
+			serial: xdg_surface_data.next_configure_serial().as_u32(),
 		};
 		this.send_event(XdgSurfaceEvent::Configure(configure_event));
 	}

@@ -112,28 +112,22 @@ impl InputBackend for LibinputInputBackend {
 }
 
 fn libinput_event_to_backend_event(event: input::Event) -> Option<BackendEvent> {
-	use input::event::{keyboard::KeyboardEventTrait, pointer::PointerEventTrait};
+	use input::event::{keyboard::KeyboardEventTrait};
 	Some(match event {
 		input::Event::Keyboard(keyboard_event) => match keyboard_event {
 			input::event::KeyboardEvent::Key(keyboard_key_event) => BackendEvent::KeyPress(KeyPress {
-				serial: crate::compositor::get_input_serial(),
-				time: keyboard_key_event.time(),
 				key: keyboard_key_event.key(),
 				state: keyboard_key_event.key_state().into(),
 			}),
 		},
 		input::Event::Pointer(pointer_event) => match pointer_event {
 			input::event::PointerEvent::Motion(motion) => BackendEvent::PointerMotion(PointerMotion {
-				serial: crate::compositor::get_input_serial(),
-				time: motion.time(),
 				dx: motion.dx(),
 				dx_unaccelerated: motion.dx_unaccelerated(),
 				dy: motion.dy(),
 				dy_unaccelerated: motion.dy_unaccelerated(),
 			}),
 			input::event::PointerEvent::Button(button) => BackendEvent::PointerButton(PointerButton {
-				serial: crate::compositor::get_input_serial(),
-				time: button.time(),
 				button: match button.button() {
 					0x110 => Button::Left,
 					0x111 => Button::Right,

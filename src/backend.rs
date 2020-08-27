@@ -150,18 +150,16 @@ pub enum PressState {
 	Release,
 }
 
+// TODO: remove serial and time fields from these as they will be managed internally by the compositor
+// rather than by the input backend.
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyPress {
-	pub serial: u32,
-	pub time: u32,
 	pub key: u32,
 	pub state: PressState,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PointerMotion {
-	pub serial: u32,
-	pub time: u32,
 	pub dx: f64,
 	pub dx_unaccelerated: f64,
 	pub dy: f64,
@@ -170,8 +168,6 @@ pub struct PointerMotion {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PointerButton {
-	pub serial: u32,
-	pub time: u32,
 	pub button: Button,
 	pub state: PressState,
 }
