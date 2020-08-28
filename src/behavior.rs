@@ -73,6 +73,7 @@ pub struct CompositorInner<I: InputBackend, G: GraphicsBackend> {
 	pub pointer_focus: Option<Resource<WlSurface, SurfaceData<G>>>,
 	pub keyboard_state: KeyboardState,
 	pub keyboard_focus: Option<Resource<WlSurface, SurfaceData<G>>>,
+	pub moving_surface: Option<Resource<WlSurface, SurfaceData<G>>>,
 	pub output_globals: Vec<(Handle<Global>, Output<G>)>,
 	_phantom: PhantomData<I>,
 }
@@ -87,6 +88,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorInner<I, G> {
 			pointer_focus: None,
 			keyboard_state: KeyboardState::new(),
 			keyboard_focus: None,
+			moving_surface: None,
 			output_globals: Vec::new(),
 			_phantom: PhantomData,
 		}

@@ -10,7 +10,7 @@ use wl_server::{
 	protocol::*,
 };
 
-use crate::compositor::{seat::{KeyboardData}, prelude::*};
+use crate::{backend::Button, compositor::{seat::{KeyboardData}, prelude::*}};
 
 // TODO this probably should be both per-seat and handled by the input backend rather than in
 // the compositor state.
@@ -90,7 +90,7 @@ impl KeyboardState {
 	pub fn send_current_keyboard_modifiers(&self, keyboard: Resource<WlKeyboard, KeyboardData>, serial: Serial) {
 		let mods = self.xkb_modifiers_state;
 		keyboard.send_event(WlKeyboardEvent::Modifiers(wl_keyboard::ModifiersEvent {
-			serial: serial.as_u32(),
+			serial: serial.into(),
 			mods_depressed: mods.mods_depressed,
 			mods_latched: mods.mods_latched,
 			mods_locked: mods.mods_locked,
@@ -151,6 +151,16 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		pointer_state.pos.1 += pointer_motion.dy_unaccelerated * pointer_state.sensitivity;
 		let pointer_pos = Point::new(pointer_state.pos.0.round() as i32, pointer_state.pos.1.round() as i32);
 
+		if let Some(ref moving_surface) = self.inner.moving_surface {
+			if let Some(node) = self.inner.window_manager.tree.find_surface(moving_surface) {
+				let mut position = node.position.get();
+				position.x = (position.x as f64 + pointer_motion.dx).round() as i32;
+				position.y = (position.y as f64 + pointer_motion.dy).round() as i32;
+				node.position.set(position);
+			}
+		}
+
+		// Tdo this should check the surface input region, not the surface window geometry
 		if let Some(node) = self.inner.window_manager.get_window_under_point(pointer_pos) {
 			let surface = node.surface.borrow().clone();
 
@@ -201,14 +211,16 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			let surface = node.surface.borrow().clone();
 			if let Some(old_keyboard_focus) = self.inner.keyboard_focus.clone() {
 				if !old_keyboard_focus.is(&surface) {
-					self.unfocus_surface_keyboard(surface.clone());
+					self.unfocus_surface_keyboard(old_keyboard_focus.clone());
 					self.focus_surface_keyboard(surface.clone());
-					self.unset_surface_active(surface.clone());
-					self.set_surface_active(surface);
+					self.unset_surface_active(old_keyboard_focus.clone());
+					self.set_surface_active(surface.clone());
+					self.inner.window_manager.raise(surface);
 				}
 			} else {
 				self.focus_surface_keyboard(surface.clone());
-				self.set_surface_active(surface)
+				self.set_surface_active(surface.clone());
+				self.inner.window_manager.raise(surface);
 			}
 		} else {
 			// Remove the keyboard focus from the current focus if empty space is clicked
@@ -216,6 +228,10 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 				self.unfocus_surface_keyboard(old_keyboard_focus.clone());
 				self.unset_surface_active(old_keyboard_focus);
 			}
+		}
+
+		if pointer_button.button == Button::Left && pointer_button.state == PressState::Release {
+			self.inner.moving_surface = None;
 		}
 
 		// Send event to the pointer of the seat of the focused window

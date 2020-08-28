@@ -3,6 +3,7 @@ use std::{
 	marker::PhantomData,
 	sync::atomic::{AtomicBool, Ordering},
 	time::{Duration, Instant},
+	cmp,
 };
 
 use once_cell::{
@@ -75,14 +76,10 @@ pub fn get_time_ms() -> u32 {
 	((elapsed.as_secs() % std::u32::MAX as u64) as u32).wrapping_add(elapsed.subsec_nanos())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Eq)]
 pub struct Serial(pub u64);
 
 impl Serial {
-	pub fn as_u32(&self) -> u32 {
-		(self.0 % std::u32::MAX as u64) as u32
-	}
-
 	pub fn advance(&mut self) -> Serial {
 		let old = *self;
 		self.0 = self.0 + 1;
@@ -90,6 +87,30 @@ impl Serial {
 			log::warn!("Input serial wrapped around, not sure what happens here");
 		}
 		old
+	}
+}
+
+impl From<u32> for Serial {
+	fn from(val: u32) -> Self {
+		Self(val as u64)
+	}
+}
+
+impl From<Serial> for u32 {
+	fn from(val: Serial) -> Self {
+		(val.0 % std::u32::MAX as u64) as u32
+	}
+}
+
+impl PartialEq<Serial> for Serial {
+    fn eq(&self, other: &Serial) -> bool {
+        u32::from(*self) == u32::from(*other)
+    }
+}
+
+impl PartialOrd for Serial {
+	fn partial_cmp(&self, other: &Serial) -> Option<cmp::Ordering> {
+		Some(u32::from(*self).cmp(&u32::from(*other)))
 	}
 }
 

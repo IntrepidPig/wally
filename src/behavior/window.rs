@@ -32,12 +32,12 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		
 		if let Some(ref seat) = client_state.borrow().seat {
 			let seat_data = seat.get_data();
-			let seat_data = seat_data.inner.borrow();
-			if let Some(ref keyboard) = seat_data.keyboard {
+			let seat_data_inner = seat_data.inner.borrow();
+			if let Some(ref keyboard) = seat_data_inner.keyboard {
 				let serial = seat_data.next_keyboard_serial();
 				self.inner.keyboard_state.send_current_keyboard_modifiers(keyboard.clone(), serial);
 				keyboard.send_event(WlKeyboardEvent::Enter(wl_keyboard::EnterEvent {
-					serial: serial.as_u32(),
+					serial: serial.into(),
 					surface: surface.to_untyped(),
 					keys: Vec::new(), // TODO: actual value
 				}));
@@ -54,10 +54,10 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		
 		if let Some(ref seat) = client_state.borrow().seat {
 			let seat_data = seat.get_data();
-			let seat_data = seat_data.inner.borrow();
-			if let Some(ref keyboard) = seat_data.keyboard {
+			let seat_data_inner = seat_data.inner.borrow();
+			if let Some(ref keyboard) = seat_data_inner.keyboard {
 				keyboard.send_event(WlKeyboardEvent::Leave(wl_keyboard::LeaveEvent {
-					serial: seat_data.next_keyboard_serial().as_u32(),
+					serial: seat_data.next_keyboard_serial().into(),
 					surface: surface.to_untyped(),
 				}));
 			}
@@ -73,10 +73,10 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		
 		if let Some(ref seat) = client_state.borrow().seat {
 			let seat_data = seat.get_data();
-			let seat_data = seat_data.inner.borrow();
-			if let Some(ref pointer) = seat_data.pointer {
+			let seat_data_inner = seat_data.inner.borrow();
+			if let Some(ref pointer) = seat_data_inner.pointer {
 				pointer.send_event(WlPointerEvent::Enter(wl_pointer::EnterEvent {
-					serial: seat_data.next_pointer_serial().as_u32(),
+					serial: seat_data.next_pointer_serial().into(),
 					surface: surface.to_untyped(),
 					surface_x: (point.x as f64).into(),
 					surface_y: (point.y as f64).into(),
@@ -94,10 +94,10 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 		if let Some(ref seat) = client_state.borrow().seat {
 			let seat_data = seat.get_data();
-			let seat_data = seat_data.inner.borrow();
-			if let Some(ref pointer) = seat_data.pointer {
+			let seat_data_inner = seat_data.inner.borrow();
+			if let Some(ref pointer) = seat_data_inner.pointer {
 				pointer.send_event(WlPointerEvent::Leave(wl_pointer::LeaveEvent {
-					serial: seat_data.next_pointer_serial().as_u32(),
+					serial: seat_data.next_pointer_serial().into(),
 					surface: surface.to_untyped(),
 				}));
 			}
@@ -153,6 +153,15 @@ impl<G: GraphicsBackend> WindowManager<G> {
 	pub fn handle_surface_unmap(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
 		if let Some(node) = self.tree.find_surface(&surface) {
 			node.draw.set(false);
+		}
+	}
+
+	pub fn raise(&mut self, surface: Resource<WlSurface, SurfaceData<G>>) {
+		if let Some(node) = self.tree.find_surface(&surface) {
+			// something has to be done about this
+			let handle = node.handle();
+			let node = handle.get().unwrap();
+			self.tree.raise(node);
 		}
 	}
 
@@ -227,6 +236,13 @@ impl<G: GraphicsBackend> SurfaceTree<G> {
 		}
 
 		None
+	}
+
+	pub fn raise(&mut self, node: Ref<Node<G>>) {
+		if let Some(i) = self.nodes.iter().position(|test| test.handle().is(&node.handle())) {
+			let node = self.nodes.remove(i);
+			self.nodes.push(node);
+		}
 	}
 
 	pub fn find<F: Fn(&Owner<Node<G>>) -> bool>(&self, f: F) -> Option<Ref<Node<G>>> {

@@ -5,7 +5,7 @@ use std::{
 
 use wl_protocols::xdg_shell::*;
 
-use super::{prelude::*};
+use super::{prelude::*, seat::SeatData};
 
 #[derive(Clone)]
 pub struct XdgSurfaceData<G: GraphicsBackend> {
@@ -190,6 +190,12 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		let xdg_surface_data = this.get_data();
 		xdg_surface_data.inner.borrow_mut().xdg_surface_role = Some(XdgSurfaceRole::XdgToplevel(xdg_toplevel.clone()));
 
+		// Remove the keyboard focus from the current focus
+		if let Some(old_keyboard_focus) = self.inner.keyboard_focus.take() {
+			self.unfocus_surface_keyboard(old_keyboard_focus.clone());
+			self.unset_surface_active(old_keyboard_focus);
+		}
+
 		self.focus_surface_keyboard(xdg_surface_data.inner.borrow().parent.clone());
 		self.set_surface_active(xdg_surface_data.inner.borrow().parent.clone());
 
@@ -210,7 +216,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 			XdgToplevelRequest::SetTitle(request) => self.handle_xdg_toplevel_set_title(this, request),
 			XdgToplevelRequest::SetAppId(_request) => log::warn!("xdg_toplevel::set_app_id not implemented"),
 			XdgToplevelRequest::ShowWindowMenu(_request) => log::warn!("xdg_toplevel::show_window_menu not implemented"),
-			XdgToplevelRequest::Move(_request) => log::warn!("xdg_toplevel::move not implemented"),
+			XdgToplevelRequest::Move(request) => self.handle_xdg_toplevel_move(this, request),
 			XdgToplevelRequest::Resize(_request) => log::warn!("xdg_toplevel::resize not implemented"),
 			XdgToplevelRequest::SetMaxSize(_request) => log::warn!("xdg_toplevel::set_max_size not implemented"),
 			XdgToplevelRequest::SetMinSize(_request) => log::warn!("xdg_toplevel::set_min_size not implemented"),
@@ -225,6 +231,19 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn handle_xdg_toplevel_set_title(&mut self, this: Resource<XdgToplevel, XdgToplevelData<G>>, request: xdg_toplevel::SetTitleRequest) {
 		let title = String::from_utf8_lossy(&request.title).into_owned();
 		this.get_data().inner.borrow_mut().title = Some(title);
+	}
+
+	pub fn handle_xdg_toplevel_move(&mut self, this: Resource<XdgToplevel, XdgToplevelData<G>>, request: xdg_toplevel::MoveRequest) {
+		let seat = request.seat.downcast_data::<SeatData>().unwrap();
+		let seat_data = seat.get_data();
+		if Serial::from(request.serial) < seat_data.current_pointer_serial.get() {
+			return;
+		}
+
+		let xdg_toplevel_data = this.get_data();
+		let xdg_surface_data = xdg_toplevel_data.inner.borrow();
+		let xdg_surface_data = xdg_surface_data.parent.get_data();
+		self.inner.moving_surface = Some(xdg_surface_data.inner.borrow().parent.clone());
 	}
 
 	pub fn set_xdg_surface_active(&mut self, xdg_surface: Resource<XdgSurface, XdgSurfaceData<G>>) {
@@ -262,7 +281,7 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn finish_xdg_surface_configure(&mut self, this: Resource<XdgSurface, XdgSurfaceData<G>>) {
 		let xdg_surface_data = this.get_data();
 		let configure_event = xdg_surface::ConfigureEvent {
-			serial: xdg_surface_data.next_configure_serial().as_u32(),
+			serial: xdg_surface_data.next_configure_serial().into(),
 		};
 		this.send_event(XdgSurfaceEvent::Configure(configure_event));
 	}

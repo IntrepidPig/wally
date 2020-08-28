@@ -9,6 +9,9 @@ use crate::{
 
 pub struct SeatData {
 	pub inner: RefCell<SeatDataInner>,
+	current_serial: Cell<Serial>,
+	pub current_pointer_serial: Cell<Serial>,
+	pub current_keyboard_serial: Cell<Serial>,
 }
 
 impl SeatData {
@@ -18,11 +21,32 @@ impl SeatData {
 				pointer: None,
 				keyboard: None,
 				touch: None,
-				next_serial: Cell::new(Serial(1)),
-				last_pointer_serial: Cell::new(Serial(1)),
-				last_keyboard_serial: Cell::new(Serial(1)),
 			}),
+			current_serial: Cell::new(Serial(0)),
+			current_pointer_serial: Cell::new(Serial(0)),
+			current_keyboard_serial: Cell::new(Serial(0)),
 		}
+	}
+}
+
+impl SeatData {
+	fn next_serial(&self) -> Serial {
+		let mut serial = self.current_serial.get();
+		serial.advance();
+		self.current_serial.set(serial);
+		serial
+	}
+
+	pub fn next_pointer_serial(&self) -> Serial {
+		let serial = self.next_serial();
+		self.current_pointer_serial.set(serial);
+		serial
+	}
+
+	pub fn next_keyboard_serial(&self) -> Serial {
+		let serial = self.next_serial();
+		self.current_pointer_serial.set(serial);
+		serial
 	}
 }
 
@@ -30,30 +54,6 @@ pub struct SeatDataInner {
 	pub pointer: Option<Resource<WlPointer, PointerData>>,
 	pub keyboard: Option<Resource<WlKeyboard, KeyboardData>>,
 	pub touch: Option<Resource<WlTouch, TouchData>>,
-	next_serial: Cell<Serial>,
-	last_pointer_serial: Cell<Serial>,
-	last_keyboard_serial: Cell<Serial>,
-}
-
-impl SeatDataInner {
-	fn next_serial(&self) -> Serial {
-		let mut new_serial = self.next_serial.get();
-		let old_serial = new_serial.advance();
-		self.next_serial.set(new_serial);
-		old_serial
-	}
-
-	pub fn next_pointer_serial(&self) -> Serial {
-		let serial = self.next_serial();
-		self.last_pointer_serial.set(serial);
-		serial
-	}
-
-	pub fn next_keyboard_serial(&self) -> Serial {
-		let serial = self.next_serial();
-		self.last_keyboard_serial.set(serial);
-		serial
-	}
 }
 
 pub struct PointerData {
@@ -193,11 +193,11 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 		keyboard.send_event(WlKeyboardEvent::Keymap(keymap_event));
 
 		let seat_data = this.get_data();
-		let serial = seat_data.inner.borrow().next_keyboard_serial();
+		let serial = seat_data.next_keyboard_serial();
 		self.inner.keyboard_state.send_current_keyboard_modifiers(keyboard.clone(), serial);
 		if let Some(ref keyboard_focus) = self.inner.keyboard_focus {
 			let enter_event = wl_keyboard::EnterEvent {
-				serial: serial.as_u32(),
+				serial: serial.into(),
 				surface: keyboard_focus.to_untyped(),
 				keys: Vec::new(), // TODO: actual value
 			};
@@ -232,15 +232,15 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 	pub fn send_keyboard_key_event(&mut self, seat: Resource<WlSeat, SeatData>, event: KeyPress) {
 		let seat_data = seat.get_data();
-		let seat_data = seat_data.inner.borrow();
-		if let Some(ref keyboard) = seat_data.keyboard {
+		let seat_data_inner = seat_data.inner.borrow();
+		if let Some(ref keyboard) = seat_data_inner.keyboard {
 			let serial = seat_data.next_keyboard_serial();
 			if self.inner.keyboard_state.mods_state_change {
 				self.inner.keyboard_state.send_current_keyboard_modifiers(keyboard.clone(), serial);
 				self.inner.keyboard_state.mods_state_change = false;
 			}
 			keyboard.send_event(WlKeyboardEvent::Key(wl_keyboard::KeyEvent {
-				serial: serial.as_u32(),
+				serial: serial.into(),
 				time: self.time().as_u32(),
 				key: event.key,
 				state: event.state.into(),
@@ -260,10 +260,10 @@ impl<I: InputBackend, G: GraphicsBackend> CompositorState<I, G> {
 
 	pub fn send_pointer_button_event(&self, seat: Resource<WlSeat, SeatData>, event: PointerButton) {
 		let seat_data = seat.get_data();
-		let seat_data = seat_data.inner.borrow();
-		if let Some(ref pointer) = seat_data.pointer {
+		let seat_data_inner = seat_data.inner.borrow();
+		if let Some(ref pointer) = seat_data_inner.pointer {
 			pointer.send_event(WlPointerEvent::Button(wl_pointer::ButtonEvent {
-				serial: seat_data.next_pointer_serial().as_u32(),
+				serial: seat_data.next_pointer_serial().into(),
 				time: self.time().as_u32(),
 				button: event.button.to_wl(),
 				state: event.state.into(),
